@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user (Admin or Judge)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "judgeId": { "type": "string", "description": "ID_Ref for Judges" },
+        "adminId": { "type": "string", "description": "Login ID for Admins" },
+        "password": { "type": "string", "description": "Password for Admins" },
+        "role": { "type": "string", "enum": ["admin", "judge"] },
+        "levels": { 
+          "type": "array", 
+          "items": { "type": "string" } 
+        },
+        "assignedCompetitions": {
+          "type": "array",
+          "items": { "type": "string", "description": "IDs of specific competitions" }
+        },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "role"]
+    },
+    "CompetitionType": {
+      "title": "CompetitionType",
+      "description": "Levels of competition (e.g., Primary, Junior High)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "description": "Name of the level (Thai)" },
+        "key": { "type": "string", "description": "Internal key (primary, junior_high, senior_high)" }
+      },
+      "required": ["name", "key"]
+    },
+    "Competition": {
+      "title": "Competition",
+      "description": "Specific competition with its own scoring criteria",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "description": "Name of the competition" },
+        "levelKey": { "type": "string", "description": "Reference to CompetitionType.key" },
+        "theme": { "type": "string", "enum": ["blue", "purple", "orange", "emerald", "rose"] },
+        "maxScore": { "type": "number" },
+        "missions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "points": { "type": "number" },
+              "type": { "type": "string", "enum": ["count", "toggle"] }
+            }
+          }
+        }
+      },
+      "required": ["name", "levelKey"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Competition team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "school": { "type": "string" },
+        "levelKey": { "type": "string", "description": "Reference to CompetitionType.key" },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "idCard": { "type": "string", "description": "13-digit Thai ID Card" },
+              "name": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["name", "levelKey", "members"]
+    },
+    "Score": {
+      "title": "Score",
+      "description": "Competition score record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teamId": { "type": "string" },
+        "competitionId": { "type": "string" },
+        "judgeId": { "type": "string" },
+        "score": { "type": "number" },
+        "round": { "type": "number" },
+        "note": { "type": "string" },
+        "details": {
+          "type": "object",
+          "properties": {
+            "missionValues": { "type": "object", "description": "Dynamic mission values (id -> value)" },
+            "retryCount": { "type": "number" },
+            "timeUsed": { "type": "string" },
+            "robotWeight": { "type": "number" },
+            "acknowledgment": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teamId", "competitionId", "judgeId", "score"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "warning", "error"] },
+        "targetRole": { "type": "string", "enum": ["all", "admin", "judge"] },
+        "targetUid": { "type": "string", "description": "Optional specific user ID" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "readBy": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["title", "message", "type", "createdAt"]
+    },
+    "CompetitionCriteria": {
+      "title": "CompetitionCriteria",
+      "description": "Scoring criteria for each level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "levelKey": { "type": "string" },
+        "theme": { "type": "string", "enum": ["blue", "purple", "orange", "emerald", "rose"] },
+        "title": { "type": "string" },
+        "maxScore": { "type": "number", "description": "Maximum possible score for this level" },
+        "missions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "points": { "type": "number" },
+              "type": { "type": "string", "enum": ["count", "toggle"] }
+            }
+          }
+        }
+      },
+      "required": ["levelKey", "title"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Users of the system"
+    },
+    "/competition_types/{typeId}": {
+      "schema": "CompetitionType",
+      "description": "Types of competition levels"
+    },
+    "/competitions/{competitionId}": {
+      "schema": "Competition",
+      "description": "Specific competitions"
+    },
+    "/teams/{teamId}": {
+      "schema": "Team",
+      "description": "Competition teams"
+    },
+    "/scores/{scoreId}": {
+      "schema": "Score",
+      "description": "Scoring records"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "System notifications"
+    },
+    "/competition_criteria/{criteriaId}": {
+      "schema": "CompetitionCriteria",
+      "description": "Scoring criteria for each level"
+    }
+  }
+}

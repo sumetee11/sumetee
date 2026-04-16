@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "k.sumetee@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isJudge() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'judge';
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'role', 'displayName']) &&
+             data.uid is string &&
+             data.role in ['admin', 'judge'] &&
+             data.displayName is string && data.displayName.size() < 100;
+    }
+
+    function isValidTeam(data) {
+      return data.keys().hasAll(['name', 'levelKey', 'members']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.levelKey is string &&
+             data.members is list && data.members.size() <= 5;
+    }
+
+    function isValidScore(data) {
+      return data.keys().hasAll(['teamId', 'competitionId', 'judgeId', 'score', 'round']) &&
+             data.teamId is string &&
+             data.competitionId is string &&
+             data.judgeId is string &&
+             data.score is number && data.score >= 0 &&
+             data.round is number;
+    }
+
+    function isValidCompetition(data) {
+      return data.keys().hasAll(['name', 'levelKey']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.levelKey is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || isOwner(userId);
+      allow delete: if isAdmin();
+    }
+
+    match /competition_types/{typeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /competitions/{competitionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /teams/{teamId} {
+      allow read: if true;
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /scores/{scoreId} {
+      allow read: if true;
+      allow create: if isAdmin() || isJudge();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
