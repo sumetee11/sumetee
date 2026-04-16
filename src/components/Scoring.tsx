@@ -852,30 +852,74 @@ export default function Scoring() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center"
+              className="relative bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden"
             >
-              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <ClipboardCheck className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">ยืนยันการบันทึกคะแนน</h3>
-              <p className="text-gray-500 text-sm mb-8">
-                กรุณาตรวจสอบความถูกต้องของคะแนนและข้อมูลทั้งหมดก่อนกดยืนยัน
-                <br />
-                <span className="font-bold text-blue-600 mt-2 block text-lg">คะแนนรวม: {scoreValue} คะแนน</span>
-              </p>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setShowConfirm(false)}
-                  className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={handleSubmit}
-                  className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-                >
-                  ยืนยันบันทึก
-                </button>
+              <div className="p-8">
+                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <ClipboardCheck className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 mb-2 text-center">ยืนยันการบันทึกคะแนน</h3>
+                <p className="text-gray-500 text-sm mb-8 text-center">
+                  กรุณาตรวจสอบความถูกต้องของข้อมูลทั้งหมดก่อนกดยืนยัน
+                </p>
+
+                <div className="space-y-4 mb-8">
+                  <div className="bg-gray-50 rounded-2xl p-5 space-y-3">
+                    <div className="flex justify-between items-center pb-3 border-b border-gray-200">
+                      <span className="text-sm font-bold text-gray-500">ทีม</span>
+                      <span className="text-sm font-black text-gray-900">{selectedTeam?.name}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-3 border-b border-gray-200">
+                      <span className="text-sm font-bold text-gray-500">รายการแข่งขัน</span>
+                      <span className="text-sm font-black text-gray-900">{selectedComp?.name}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-3 border-b border-gray-200">
+                      <span className="text-sm font-bold text-gray-500">รอบที่</span>
+                      <span className="text-sm font-black text-gray-900">{round}</span>
+                    </div>
+                    
+                    {levelConfig && (
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="bg-white p-3 rounded-xl border border-gray-100">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">เวลาที่ใช้</div>
+                          <div className="text-sm font-black text-gray-900">{robotDetails.timeUsed} น.</div>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-gray-100">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Retry</div>
+                          <div className="text-sm font-black text-gray-900">{robotDetails.retryCount} ครั้ง</div>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-gray-100">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">น้ำหนัก</div>
+                          <div className="text-sm font-black text-gray-900">{robotDetails.robotWeight} กรัม</div>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-gray-100">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">ผู้รับทราบ</div>
+                          <div className="text-sm font-black text-gray-900 truncate">{robotDetails.acknowledgment}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-3 flex justify-between items-center">
+                      <span className="text-lg font-black text-gray-900">คะแนนรวมสุทธิ</span>
+                      <span className="text-3xl font-black text-blue-600">{scoreValue} <span className="text-sm text-gray-400">แต้ม</span></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setShowConfirm(false)}
+                    className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+                  >
+                    ยืนยันบันทึก
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
