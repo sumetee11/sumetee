@@ -73,7 +73,8 @@
             "type": "object",
             "properties": {
               "idCard": { "type": "string", "description": "13-digit Thai ID Card" },
-              "name": { "type": "string" }
+              "name": { "type": "string" },
+              "birthDate": { "type": "string", "format": "date", "description": "YYYY-MM-DD" }
             }
           }
         }

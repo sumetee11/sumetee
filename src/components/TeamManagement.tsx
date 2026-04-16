@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx';
 interface TeamMember {
   idCard: string;
   name: string;
+  birthDate: string;
 }
 
 interface Team {
@@ -39,7 +40,7 @@ export default function TeamManagement() {
     name: '',
     school: '',
     levelKey: '',
-    members: [{ idCard: '', name: '' }] as TeamMember[]
+    members: [{ idCard: '', name: '', birthDate: '' }] as TeamMember[]
   });
   const [error, setError] = useState('');
   const [importLoading, setImportLoading] = useState(false);
@@ -69,6 +70,18 @@ export default function TeamManagement() {
     };
   }, []);
 
+  const calculateAge = (birthDate: string) => {
+    if (!birthDate) return null;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
   const handleOpenModal = (team?: Team) => {
     if (team) {
       setEditingTeam(team);
@@ -76,7 +89,7 @@ export default function TeamManagement() {
         name: team.name,
         school: team.school || '',
         levelKey: team.levelKey,
-        members: team.members.length > 0 ? team.members : [{ idCard: '', name: '' }]
+        members: team.members.length > 0 ? team.members : [{ idCard: '', name: '', birthDate: '' }]
       });
     } else {
       setEditingTeam(null);
@@ -84,7 +97,7 @@ export default function TeamManagement() {
         name: '',
         school: '',
         levelKey: competitionTypes[0]?.key || '',
-        members: [{ idCard: '', name: '' }]
+        members: [{ idCard: '', name: '', birthDate: '' }]
       });
     }
     setError('');
@@ -94,7 +107,7 @@ export default function TeamManagement() {
   const addMember = () => {
     setFormData(prev => ({
       ...prev,
-      members: [...prev.members, { idCard: '', name: '' }]
+      members: [...prev.members, { idCard: '', name: '', birthDate: '' }]
     }));
   };
 
@@ -134,8 +147,8 @@ export default function TeamManagement() {
     // Validate members
     const idCards = new Set();
     for (const member of formData.members) {
-      if (!member.idCard.trim() || !member.name.trim()) {
-        setError('กรุณากรอกข้อมูลสมาชิกให้ครบถ้วน');
+      if (!member.idCard.trim() || !member.name.trim() || !member.birthDate) {
+        setError('กรุณากรอกข้อมูลสมาชิกให้ครบถ้วน (รวมถึงวันเกิด)');
         return;
       }
       if (!validateIdCard(member.idCard)) {
@@ -184,10 +197,13 @@ export default function TeamManagement() {
         'ระดับ (primary/junior_high/senior_high)': 'primary',
         'ชื่อสมาชิก 1': 'นายสมชาย ใจดี',
         'เลขบัตรประชาชน 1': '1234567890123',
+        'วันเกิดสมาชิก 1 (YYYY-MM-DD)': '2010-05-15',
         'ชื่อสมาชิก 2': 'นางสาวสมศรี มีสุข',
         'เลขบัตรประชาชน 2': '1234567890124',
+        'วันเกิดสมาชิก 2 (YYYY-MM-DD)': '2011-08-20',
         'ชื่อสมาชิก 3': '',
-        'เลขบัตรประชาชน 3': ''
+        'เลขบัตรประชาชน 3': '',
+        'วันเกิดสมาชิก 3 (YYYY-MM-DD)': ''
       }
     ];
 
@@ -230,8 +246,9 @@ export default function TeamManagement() {
           for (let i = 1; i <= 3; i++) {
             const mName = row[`ชื่อสมาชิก ${i}`]?.toString().trim();
             const mId = row[`เลขบัตรประชาชน ${i}`]?.toString().trim();
-            if (mName && mId) {
-              members.push({ name: mName, idCard: mId });
+            const mBirth = row[`วันเกิดสมาชิก ${i} (YYYY-MM-DD)`]?.toString().trim();
+            if (mName && mId && mBirth) {
+              members.push({ name: mName, idCard: mId, birthDate: mBirth });
             }
           }
 
@@ -372,13 +389,25 @@ export default function TeamManagement() {
                     </span>
                   </td>
                   <td className="px-8 py-6">
-                    <div className="space-y-1">
-                      {team.members.map((m, idx) => (
-                        <div key={idx} className="text-sm text-gray-600 flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                          {m.name} <span className="text-[10px] text-gray-400 font-mono">({m.idCard})</span>
-                        </div>
-                      ))}
+                    <div className="space-y-2">
+                      {team.members.map((m, idx) => {
+                        const age = calculateAge(m.birthDate);
+                        return (
+                          <div key={idx} className="text-sm text-gray-600 flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                              <span className="font-bold">{m.name}</span>
+                              <span className="text-[10px] text-gray-400 font-mono">({m.idCard})</span>
+                            </div>
+                            <div className="pl-3.5 text-[10px] text-gray-400 flex items-center gap-2">
+                              <span>เกิด: {m.birthDate || 'N/A'}</span>
+                              <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 font-bold">
+                                อายุ: {age !== null ? `${age} ปี` : 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </td>
                   <td className="px-8 py-6 text-right">
@@ -515,9 +544,26 @@ export default function TeamManagement() {
                             type="text"
                             value={member.name}
                             onChange={(e) => updateMember(idx, 'name', e.target.value)}
-                            className="w-full px-4 py-2 bg-white border-none rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                            className="w-full px-4 py-2 bg-white border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                             placeholder="ชื่อ-นามสกุลสมาชิก"
                           />
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">วัน/เดือน/ปีเกิด</label>
+                              <input
+                                type="date"
+                                value={member.birthDate}
+                                onChange={(e) => updateMember(idx, 'birthDate', e.target.value)}
+                                className="w-full px-4 py-2 bg-white border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">อายุปัจจุบัน</label>
+                              <div className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl text-sm font-bold text-gray-600">
+                                {calculateAge(member.birthDate) !== null ? `${calculateAge(member.birthDate)} ปี` : '-'}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                         {formData.members.length > 1 && (
                           <button
