@@ -151,7 +151,7 @@ const Navbar = () => {
   const navItems = [
     { name: 'แดชบอร์ด', path: '/dashboard', icon: LayoutDashboard, show: !!profile },
     { name: 'บันทึกคะแนน', path: '/scoring', icon: ClipboardCheck, show: !!profile },
-    { name: 'สรุปผลคะแนน', path: '/rankings', icon: Medal, show: !!profile },
+    { name: 'สรุปผลคะแนน', path: '/rankings', icon: Medal, show: true },
     { name: 'จัดการทีม', path: '/teams', icon: Users, show: isAdmin },
     { name: 'จัดการรายการแข่งขัน', path: '/competitions', icon: ClipboardCheck, show: isAdmin },
     { name: 'จัดการกรรมการ', path: '/judges', icon: UserPlus, show: isAdmin },
@@ -722,7 +722,7 @@ export default function App() {
                 <Route path="/competitions" element={isAdmin ? <CompetitionManagement /> : <Navigate to="/login" />} />
                 <Route path="/teams" element={isAdmin ? <TeamManagement /> : <Navigate to="/login" />} />
                 <Route path="/scoring" element={profile ? <Scoring /> : <Navigate to="/login" />} />
-                <Route path="/rankings" element={profile ? <Rankings /> : <Navigate to="/login" />} />
+                <Route path="/rankings" element={<Rankings />} />
                 <Route path="/judges" element={isAdmin ? <JudgeManagement /> : <Navigate to="/login" />} />
                 
                 <Route path="*" element={<Navigate to="/" />} />
