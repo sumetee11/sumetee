@@ -59,7 +59,10 @@ service cloud.firestore {
     // Rules
     // ===============================================================
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      // Allow public read for custom login system (Judge/Admin lookup)
+      // WARNING: This allows anyone to query the users collection. 
+      // In a production app, use Firebase Auth with custom claims instead of custom password fields.
+      allow read: if true;
       allow create, update: if isAdmin() || isOwner(userId);
       allow delete: if isAdmin();
     }
@@ -85,6 +88,10 @@ service cloud.firestore {
       allow create: if isAdmin() || isJudge();
       allow update: if isAdmin();
       allow delete: if isAdmin();
+    }
+
+    match /connection_test/{docId} {
+      allow read: if true;
     }
 
     match /notifications/{notificationId} {

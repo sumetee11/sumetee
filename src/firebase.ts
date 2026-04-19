@@ -7,15 +7,29 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
+export let isFirebaseConnected = true;
+let connectionError: string | null = null;
+
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Try to get a non-existent doc in the connection_test collection to test connectivity
+    await getDocFromServer(doc(db, 'connection_test', 'status'));
+    isFirebaseConnected = true;
+    connectionError = null;
+    console.log("Firebase connection established successfully.");
   } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. ");
+    console.error("Firebase connection error:", error);
+    isFirebaseConnected = false;
+    if (error instanceof Error) {
+      connectionError = error.message;
+      if (error.message.includes('the client is offline')) {
+        console.error("Firestore client is offline. Possible causes: Firewall, incorrect Database ID, or Firestore not provisioned.");
+      }
     }
   }
 }
 testConnection();
+
+export const getFirebaseStatus = () => ({ isConnected: isFirebaseConnected, error: connectionError });
 
 export default app;

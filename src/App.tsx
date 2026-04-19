@@ -2,8 +2,8 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, User as FirebaseUser, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, collection, query, orderBy, where, getDocs, setDoc } from 'firebase/firestore';
-import { auth, db } from './firebase';
-import { LogIn, LogOut, Trophy, Users, UserPlus, ClipboardCheck, LayoutDashboard, Menu, X, ChevronRight, ShieldCheck, AlertCircle, Bell, Medal, Settings } from 'lucide-react';
+import { auth, db, getFirebaseStatus } from './firebase';
+import { LogIn, LogOut, Trophy, Users, UserPlus, ClipboardCheck, LayoutDashboard, Menu, X, ChevronRight, ShieldCheck, AlertCircle, Bell, Medal, Settings, WifiOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import CompetitionTypeManagement from './components/CompetitionTypeManagement';
@@ -136,6 +136,27 @@ const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   }
 
   return <>{children}</>;
+};
+
+const FirebaseConnectionBanner = () => {
+  const [status, setStatus] = useState(getFirebaseStatus());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStatus(getFirebaseStatus());
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (status.isConnected) return null;
+
+  return (
+    <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-center gap-2 text-sm font-bold animate-in fade-in slide-in-from-top-full duration-500 sticky top-0 z-[60]">
+      <WifiOff className="w-4 h-4" />
+      <span>ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาตรวจสอบการตั้งค่า Firebase ของคุณ</span>
+      {status.error && <span className="text-[10px] opacity-70 ml-2">({status.error})</span>}
+    </div>
+  );
 };
 
 const Navbar = () => {
@@ -712,6 +733,7 @@ export default function App() {
       <ErrorBoundary>
         <Router>
           <div className="min-h-screen bg-white font-sans text-gray-900">
+            <FirebaseConnectionBanner />
             <Navbar />
             <main>
               <Routes>
