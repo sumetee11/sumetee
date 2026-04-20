@@ -2,8 +2,8 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, User as FirebaseUser, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, collection, query, orderBy, where, getDocs, setDoc } from 'firebase/firestore';
-import { auth, db, getFirebaseStatus, testConnection } from './firebase';
-import { LogIn, LogOut, Trophy, Users, UserPlus, ClipboardCheck, LayoutDashboard, Menu, X, ChevronRight, ShieldCheck, AlertCircle, Bell, Medal, Settings, WifiOff, RefreshCw } from 'lucide-react';
+import { auth, db } from './firebase';
+import { LogIn, LogOut, Trophy, Users, UserPlus, ClipboardCheck, LayoutDashboard, Menu, X, ChevronRight, ShieldCheck, AlertCircle, Bell, Medal, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import CompetitionTypeManagement from './components/CompetitionTypeManagement';
@@ -136,45 +136,6 @@ const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   }
 
   return <>{children}</>;
-};
-
-const FirebaseConnectionBanner = () => {
-  const [status, setStatus] = useState(getFirebaseStatus());
-  const [retrying, setRetrying] = useState(false);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStatus(getFirebaseStatus());
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleRetry = async () => {
-    setRetrying(true);
-    const result = await testConnection();
-    setStatus(result);
-    setRetrying(false);
-  };
-
-  if (status.isConnected) return null;
-
-  return (
-    <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-center gap-4 text-sm font-bold animate-in fade-in slide-in-from-top-full duration-500 sticky top-0 z-[60] shadow-lg">
-      <div className="flex items-center gap-2">
-        <WifiOff className="w-4 h-4" />
-        <span>ไม่สามารถเชื่อมต่อฐานข้อมูลได้</span>
-      </div>
-      <button 
-        onClick={handleRetry}
-        disabled={retrying}
-        className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg flex items-center gap-2 transition-all disabled:opacity-50"
-      >
-        <RefreshCw className={cn("w-3 h-3", retrying && "animate-spin")} />
-        {retrying ? 'กำลังเชื่อมต่อ...' : 'เชื่อมต่อใหม่'}
-      </button>
-      {status.error && <span className="text-[10px] opacity-70 hidden sm:block">({status.error})</span>}
-    </div>
-  );
 };
 
 const Navbar = () => {
@@ -751,7 +712,6 @@ export default function App() {
       <ErrorBoundary>
         <Router>
           <div className="min-h-screen bg-white font-sans text-gray-900">
-            <FirebaseConnectionBanner />
             <Navbar />
             <main>
               <Routes>
