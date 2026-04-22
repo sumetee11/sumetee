@@ -14,6 +14,7 @@ import TeamManagement from './components/TeamManagement';
 import NotificationSystem from './components/NotificationSystem';
 import Scoring from './components/Scoring';
 import Rankings from './components/Rankings';
+import LiveScoreTicker from './components/LiveScoreTicker';
 
 // --- Types ---
 export type Level = 'primary' | 'junior_high' | 'senior_high';
@@ -775,6 +776,7 @@ export default function App() {
           <Router>
             <div className="min-h-screen bg-white font-sans text-gray-900">
               <Navbar />
+              <LiveScoreTicker />
               <main>
                 <Routes>
                   <Route path="/" element={<Home />} />

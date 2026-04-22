@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trophy, Medal, School, Target, ChevronRight, Search, Filter } from 'lucide-react';
+import { Trophy, Medal, School, Target, ChevronRight, Search, Filter, FileText, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, handleFirestoreError, OperationType } from '../lib/utils';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface Score {
   teamId: string;
@@ -40,6 +42,9 @@ export default function Rankings() {
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const certificateRef = useRef<HTMLDivElement>(null);
+  const [certData, setCertData] = useState<{ team: string, school: string, competition: string, rank: string } | null>(null);
   
   const [selectedLevel, setSelectedLevel] = useState('all');
   const [selectedComp, setSelectedComp] = useState('all');
@@ -187,6 +192,47 @@ export default function Rankings() {
     });
   };
 
+  const handleGenerateCertificate = async (team: any, index: number) => {
+    const compName = competitions.find(c => c.id === selectedComp)?.name || '';
+    const rankTitle = index === 0 ? 'ชนะเลิศ (1st Place)' : index === 1 ? 'รองชนะเลิศอันดับ 1 (2nd Place)' : 'รองชนะเลิศอันดับ 2 (3rd Place)';
+    
+    setCertData({
+      team: team.name,
+      school: team.school,
+      competition: compName,
+      rank: rankTitle
+    });
+    setGeneratingId(team.id);
+
+    // Wait for state update and re-render
+    setTimeout(async () => {
+      if (certificateRef.current) {
+        try {
+          const canvas = await html2canvas(certificateRef.current, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF({
+            orientation: 'landscape',
+            unit: 'px',
+            format: [canvas.width, canvas.height]
+          });
+          
+          pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+          pdf.save(`Certificate_${team.name.replace(/\s+/g, '_')}.pdf`);
+        } catch (error) {
+          console.error('Error generating PDF:', error);
+        } finally {
+          setGeneratingId(null);
+          setCertData(null);
+        }
+      }
+    }, 100);
+  };
+
   const rankings = getRankings();
 
   if (loading) {
@@ -263,6 +309,9 @@ export default function Rankings() {
       <div className="space-y-8">
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
+              {/* Certificate Template (Hidden) */}
+              <CertificateTemplate data={certData} innerRef={certificateRef} />
+              
               <table className="w-full text-left">
                 <thead>
                   {selectedComp !== 'all' && (
@@ -292,6 +341,9 @@ export default function Rankings() {
                       </>
                     )}
                     <th className="px-4 py-3 text-right">คะแนนดีสุด</th>
+                    {selectedComp !== 'all' && (
+                      <th className="px-4 py-3 text-center">เกียรติบัตร</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -368,6 +420,26 @@ export default function Rankings() {
                         </div>
                         <div className="text-[8px] text-gray-400 uppercase font-bold">คะแนน</div>
                       </td>
+                      {selectedComp !== 'all' && (
+                        <td className="px-4 py-3 text-center">
+                          {index < 3 ? (
+                            <button
+                              onClick={() => handleGenerateCertificate(team, index)}
+                              disabled={generatingId === team.id}
+                              className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 group/btn shadow-sm border border-blue-100"
+                              title="ดาวน์โหลดเกียรติบัตร"
+                            >
+                              {generatingId === team.id ? (
+                                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Download className="w-5 h-5" />
+                              )}
+                            </button>
+                          ) : (
+                            <div className="text-gray-300">-</div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {rankings.length === 0 && (
@@ -381,6 +453,71 @@ export default function Rankings() {
               </table>
             </div>
           </div>
+      </div>
+    </div>
+  );
+}
+
+// Certificate Template Component (rendered off-screen for capture)
+function CertificateTemplate({ data, innerRef }: { data: { team: string, school: string, competition: string, rank: string } | null, innerRef: React.RefObject<HTMLDivElement | null> }) {
+  if (!data) return null;
+
+  return (
+    <div className="fixed -left-[2000px] top-0 pointer-events-none">
+      <div 
+        ref={innerRef}
+        style={{ width: '1123px', height: '794px' }} // Standard A4 landscape at 96dpi
+        className="bg-white p-12 flex flex-col items-center justify-between border-[24px] border-double border-blue-900 font-serif relative"
+      >
+        {/* Background Decorative Elements */}
+        <div className="absolute inset-0 border-[2px] border-blue-200 m-4 pointer-events-none" />
+        
+        <header className="text-center space-y-4">
+          <div className="flex justify-center mb-6">
+            <div className="bg-blue-900 p-4 rounded-full">
+              <Trophy className="w-16 h-16 text-yellow-400" />
+            </div>
+          </div>
+          <h1 className="text-5xl font-black text-blue-900 tracking-widest uppercase">Certificate of Excellence</h1>
+          <div className="h-1 w-48 bg-yellow-500 mx-auto" />
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center py-10 space-y-8">
+          <p className="text-2xl text-gray-600 italic">This is to certify that team</p>
+          
+          <div className="text-center">
+            <h2 className="text-6xl font-bold text-gray-900 mb-2 border-b-2 border-gray-100 pb-2 px-12">{data.team}</h2>
+            <p className="text-xl text-blue-600 font-bold uppercase tracking-widest">{data.school}</p>
+          </div>
+
+          <p className="text-xl text-gray-600">has achieved the rank of</p>
+          
+          <div className="bg-blue-50 px-10 py-6 rounded-3xl border-2 border-blue-200 shadow-sm text-center">
+            <p className="text-4xl font-black text-blue-900 italic uppercase">{data.rank}</p>
+          </div>
+
+          <div className="text-center space-y-2">
+            <p className="text-lg text-gray-500">In the competition</p>
+            <p className="text-2xl font-bold text-gray-800">{data.competition}</p>
+          </div>
+        </main>
+
+        <footer className="w-full flex justify-between items-end px-12 pb-6 mt-10">
+          <div className="text-center space-y-2">
+            <div className="w-48 border-b-2 border-gray-300 mb-2" />
+            <p className="text-sm font-bold text-gray-500 uppercase">Organizing Committee</p>
+          </div>
+          
+          <div className="text-center space-y-1">
+            <p className="text-sm font-bold text-gray-400 uppercase">Issued on</p>
+            <p className="text-xl font-bold text-gray-800">{new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          </div>
+
+          <div className="text-center space-y-2">
+            <div className="w-48 border-b-2 border-gray-300 mb-2" />
+            <p className="text-sm font-bold text-gray-500 uppercase">Official Seal</p>
+          </div>
+        </footer>
       </div>
     </div>
   );
