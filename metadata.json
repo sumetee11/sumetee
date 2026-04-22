@@ -1,5 +1,5 @@
 {
   "name": "Robot Competition Management System",
-  "description": "A comprehensive system for managing robot competitions, including score recording, team management, judge management, and real-time rankings for Primary, Junior High, and Senior High levels.",
+  "description": "A robust system for managing robot competitions with real-time scoring and rankings across multiple education levels.",
   "requestFramePermissions": []
 }

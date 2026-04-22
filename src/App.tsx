@@ -19,6 +19,12 @@ import Rankings from './components/Rankings';
 export type Level = 'primary' | 'junior_high' | 'senior_high';
 export type Role = 'admin' | 'judge';
 
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 export interface Member {
   idCard: string;
   nameSname: string;
@@ -58,6 +64,10 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
+interface ToastContextType {
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+}
+
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
@@ -69,7 +79,45 @@ export const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
+export const ToastContext = createContext<ToastContextType>({
+  showToast: () => {},
+});
+
 // --- Components ---
+
+const ToastContainer: React.FC<{ toasts: ToastMessage[]; removeToast: (id: string) => void }> = ({ toasts, removeToast }) => {
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] space-y-2 pointer-events-none">
+      <AnimatePresence>
+        {toasts.map((toast) => (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, x: 50, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
+            className={cn(
+              "pointer-events-auto px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] border",
+              toast.type === 'success' ? "bg-white border-green-100 text-green-700" :
+              toast.type === 'error' ? "bg-white border-red-100 text-red-700" :
+              "bg-white border-blue-100 text-blue-700"
+            )}
+          >
+            {toast.type === 'success' ? <ShieldCheck className="w-6 h-6 text-green-500" /> :
+             toast.type === 'error' ? <AlertCircle className="w-6 h-6 text-red-500" /> :
+             <Bell className="w-6 h-6 text-blue-500" />}
+            <span className="font-bold">{toast.message}</span>
+            <button 
+              onClick={() => removeToast(toast.id)}
+              className="ml-auto text-gray-400 hover:text-gray-600 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [hasError, setHasError] = useState(false);
@@ -610,6 +658,19 @@ export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      removeToast(id);
+    }, 5000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   // Check for existing session on mount
   useEffect(() => {
@@ -709,28 +770,31 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, isAdmin, isJudge, loginJudge, loginAdmin, logout }}>
-      <ErrorBoundary>
-        <Router>
-          <div className="min-h-screen bg-white font-sans text-gray-900">
-            <Navbar />
-            <main>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/dashboard" element={profile ? <Dashboard /> : <Navigate to="/login" />} />
-                <Route path="/competition-types" element={isAdmin ? <CompetitionTypeManagement /> : <Navigate to="/login" />} />
-                <Route path="/competitions" element={isAdmin ? <CompetitionManagement /> : <Navigate to="/login" />} />
-                <Route path="/teams" element={isAdmin ? <TeamManagement /> : <Navigate to="/login" />} />
-                <Route path="/scoring" element={profile ? <Scoring /> : <Navigate to="/login" />} />
-                <Route path="/rankings" element={<Rankings />} />
-                <Route path="/judges" element={isAdmin ? <JudgeManagement /> : <Navigate to="/login" />} />
-                
-                <Route path="*" element={<Navigate to="/" />} />
-              </Routes>
-            </main>
-          </div>
-        </Router>
-      </ErrorBoundary>
+      <ToastContext.Provider value={{ showToast }}>
+        <ErrorBoundary>
+          <Router>
+            <div className="min-h-screen bg-white font-sans text-gray-900">
+              <Navbar />
+              <main>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/dashboard" element={profile ? <Dashboard /> : <Navigate to="/login" />} />
+                  <Route path="/competition-types" element={isAdmin ? <CompetitionTypeManagement /> : <Navigate to="/login" />} />
+                  <Route path="/competitions" element={isAdmin ? <CompetitionManagement /> : <Navigate to="/login" />} />
+                  <Route path="/teams" element={isAdmin ? <TeamManagement /> : <Navigate to="/login" />} />
+                  <Route path="/scoring" element={profile ? <Scoring /> : <Navigate to="/login" />} />
+                  <Route path="/rankings" element={<Rankings />} />
+                  <Route path="/judges" element={isAdmin ? <JudgeManagement /> : <Navigate to="/login" />} />
+                  
+                  <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+              </main>
+              <ToastContainer toasts={toasts} removeToast={removeToast} />
+            </div>
+          </Router>
+        </ErrorBoundary>
+      </ToastContext.Provider>
     </AuthContext.Provider>
   );
 }

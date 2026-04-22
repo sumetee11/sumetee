@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext } from '../App';
+import { AuthContext, ToastContext } from '../App';
 import { sendNotification } from '../services/notificationService';
 import { ClipboardCheck, Plus, Trash2, Edit3, X, Check, AlertCircle, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -30,6 +30,7 @@ interface CompetitionType {
 
 export default function CompetitionManagement() {
   const { isAdmin } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,8 +125,10 @@ export default function CompetitionManagement() {
     try {
       if (editingComp) {
         await setDoc(doc(db, 'competitions', editingComp.id), formData);
+        showToast('อัปเดตรายการแข่งขันสำเร็จ', 'success');
       } else {
         await addDoc(collection(db, 'competitions'), formData);
+        showToast('เพิ่มรายการแข่งขันใหม่สำเร็จ', 'success');
         await sendNotification({
           title: 'รายการแข่งขันใหม่',
           message: `มีการเพิ่มรายการแข่งขัน "${formData.name}" ในระบบ`,
@@ -143,8 +146,10 @@ export default function CompetitionManagement() {
     if (!window.confirm('คุณต้องการลบรายการแข่งขันนี้ใช่หรือไม่?')) return;
     try {
       await deleteDoc(doc(db, 'competitions', id));
+      showToast('ลบรายการแข่งขันสำเร็จ', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `competitions/${id}`);
+      showToast('ไม่สามารถลบรายการแข่งขันได้', 'error');
     }
   };
 

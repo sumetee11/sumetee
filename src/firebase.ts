@@ -22,8 +22,16 @@ export async function testConnection() {
     });
     
     // Check if we can reach the database
+    // We use a short timeout to avoid hanging if the project is in a bad state
     const testDoc = doc(db, 'connection_test', 'status');
-    await getDocFromServer(testDoc);
+    const promise = getDocFromServer(testDoc);
+    
+    // Add a race condition to prevent long hangs
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Connection timeout')), 5000)
+    );
+
+    await Promise.race([promise, timeoutPromise]);
     
     isFirebaseConnected = true;
     connectionError = null;
@@ -44,8 +52,10 @@ export async function testConnection() {
       isFirebaseConnected = false;
       connectionError = error.message;
       
-      if (error.message.includes('the client is offline')) {
-        console.error("Firestore client is offline. This usually means the Firestore API is not enabled in your project, the Database ID is incorrect, or your network is blocking the connection.");
+      if (error.message.includes('the client is offline') || error.message.includes('Connection timeout')) {
+        console.error("Firestore client is offline or timed out. This often means the project is not provisioned correctly. Please refresh the page and re-accept Firebase terms if prompted.");
+        isFirebaseConnected = false;
+        connectionError = "ระบบฐานข้อมูลยังไม่พร้อมใช้งาน (Project desync). กรุณารีเฟรชหน้าจอและกดยอมรับการตั้งค่า Firebase อีกครั้ง";
       } else if (error.message.includes('database was deleted') || error.message.includes('not found')) {
         console.error("The specified database was not found or deleted. Please check your firestoreDatabaseId in firebase-applet-config.json or run set_up_firebase again.");
       }

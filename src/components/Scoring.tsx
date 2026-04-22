@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, addDoc, where, serverTimestamp, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext } from '../App';
+import { AuthContext, ToastContext } from '../App';
 import { sendNotification } from '../services/notificationService';
 import { Trophy, ClipboardCheck, Plus, Trash2, Edit3, X, Check, AlertCircle, Search, User, School, History, ChevronDown, ChevronUp, Clock, Weight, RotateCcw, Target, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -54,6 +54,7 @@ interface CustomMission {
 
 export default function Scoring() {
   const { profile, isJudge, isAdmin } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
   const [teams, setTeams] = useState<Team[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
@@ -266,6 +267,8 @@ export default function Scoring() {
 
       await addDoc(collection(db, 'scores'), scoreData);
 
+      showToast('บันทึกคะแนนสำเร็จ', 'success');
+      
       await sendNotification({
         title: 'บันทึกคะแนนใหม่',
         message: `บันทึกคะแนน ${scoreValue} ให้กับทีม "${selectedTeam?.name}" ในรายการ "${selectedComp?.name}"`,
@@ -297,8 +300,10 @@ export default function Scoring() {
     if (!window.confirm('คุณต้องการลบคะแนนนี้ใช่หรือไม่?')) return;
     try {
       await deleteDoc(doc(db, 'scores', id));
+      showToast('ลบคะแนนสำเร็จ', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `scores/${id}`);
+      showToast('ไม่สามารถลบคะแนนได้', 'error');
     }
   };
 

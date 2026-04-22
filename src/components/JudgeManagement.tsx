@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext, UserProfile, Level } from '../App';
+import { AuthContext, UserProfile, Level, ToastContext } from '../App';
 import { sendNotification } from '../services/notificationService';
 import { UserPlus, Trash2, Edit3, X, Check, AlertCircle, Shield, Trophy, Search, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -20,6 +20,7 @@ interface Competition {
 
 export default function JudgeManagement() {
   const { isAdmin } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
   const [judges, setJudges] = useState<UserProfile[]>([]);
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
@@ -145,6 +146,8 @@ export default function JudgeManagement() {
         assignedCompetitions: formData.assignedCompetitions
       }, { merge: true });
 
+      showToast(editingJudge ? 'อัปเดตข้อมูลกรรมการสำเร็จ' : 'เพิ่มกรรมการใหม่สำเร็จ', 'success');
+
       if (!editingJudge) {
         await sendNotification({
           title: 'เพิ่มกรรมการใหม่',
@@ -173,8 +176,10 @@ export default function JudgeManagement() {
     if (!window.confirm('คุณต้องการลบกรรมการท่านนี้ใช่หรือไม่?')) return;
     try {
       await deleteDoc(doc(db, 'users', uid));
+      showToast('ลบข้อมูลกรรมการสำเร็จ', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `users/${uid}`);
+      showToast('ไม่สามารถลบข้อมูลกรรมการได้', 'error');
     }
   };
 

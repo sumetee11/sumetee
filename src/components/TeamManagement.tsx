@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, addDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext } from '../App';
+import { AuthContext, ToastContext } from '../App';
 import { sendNotification } from '../services/notificationService';
 import { Users, Plus, Trash2, Edit3, X, Check, AlertCircle, School, Trophy, Search, UserPlus, FileUp, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -29,6 +29,7 @@ interface CompetitionType {
 
 export default function TeamManagement() {
   const { isAdmin } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
   const [teams, setTeams] = useState<Team[]>([]);
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,7 +123,6 @@ export default function TeamManagement() {
     const newMembers = [...formData.members];
     let processedValue = value;
     
-    // Real-time sanitization: only allow numbers for idCard
     if (field === 'idCard') {
       processedValue = value.replace(/\D/g, '');
     }
@@ -135,6 +135,16 @@ export default function TeamManagement() {
     return /^\d{13}$/.test(id);
   };
 
+  const checkDuplicateIdCard = (idCard: string, currentTeamId?: string) => {
+    for (const team of teams) {
+      if (currentTeamId && team.id === currentTeamId) continue;
+      if (team.members?.some(m => m.idCard === idCard)) {
+        return team;
+      }
+    }
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -144,32 +154,39 @@ export default function TeamManagement() {
       return;
     }
 
-    // Validate members
-    const idCards = new Set();
+    const currentIdCards = new Set();
     for (const member of formData.members) {
       if (!member.idCard.trim() || !member.name.trim() || !member.birthDate) {
-        setError('กรุณากรอกข้อมูลสมาชิกให้ครบถ้วน (รวมถึงวันเกิด)');
+        setError('กรุณากรอกข้อมูลสมาชิกให้ครบถ้วน');
         return;
       }
       if (!validateIdCard(member.idCard)) {
-        setError(`เลขบัตรประชาชน ${member.idCard} ไม่ถูกต้อง (ต้องเป็นตัวเลข 13 หลัก)`);
+        setError(`เลขบัตรประชาชน ${member.idCard} ไม่ถูกต้อง (13 หลัก)`);
         return;
       }
-      if (idCards.has(member.idCard)) {
+      if (currentIdCards.has(member.idCard)) {
         setError(`เลขบัตรประชาชน ${member.idCard} ซ้ำกันในทีม`);
         return;
       }
-      idCards.add(member.idCard);
+
+      const duplicateTeam = checkDuplicateIdCard(member.idCard, editingTeam?.id);
+      if (duplicateTeam) {
+        setError(`เลขบัตรประชาชน ${member.idCard} ถูกใช้งานแล้วโดยทีม "${duplicateTeam.name}" (${duplicateTeam.levelKey})`);
+        return;
+      }
+      currentIdCards.add(member.idCard);
     }
 
     try {
       if (editingTeam) {
         await setDoc(doc(db, 'teams', editingTeam.id), formData);
+        showToast('แก้ไขข้อมูลทีมสำเร็จ', 'success');
       } else {
         await addDoc(collection(db, 'teams'), formData);
+        showToast('ลงทะเบียนทีมใหม่สำเร็จ', 'success');
         await sendNotification({
           title: 'ลงทะเบียนทีมใหม่',
-          message: `ทีม "${formData.name}" จากโรงเรียน "${formData.school}" ลงทะเบียนสำเร็จ`,
+          message: `ทีม "${formData.name}" ลงทะเบียนสำเร็จ`,
           type: 'success',
           targetRole: 'all'
         });
@@ -177,6 +194,7 @@ export default function TeamManagement() {
       setIsModalOpen(false);
     } catch (err) {
       handleFirestoreError(err, editingTeam ? OperationType.UPDATE : OperationType.CREATE, editingTeam ? `teams/${editingTeam.id}` : 'teams');
+      showToast('ไม่สามารถบันทึกข้อมูลได้', 'error');
     }
   };
 
@@ -184,8 +202,10 @@ export default function TeamManagement() {
     if (!window.confirm('คุณต้องการลบทีมนี้ใช่หรือไม่?')) return;
     try {
       await deleteDoc(doc(db, 'teams', id));
+      showToast('ลบทีมสำเร็จ', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `teams/${id}`);
+      showToast('ไม่สามารถลบทีมได้', 'error');
     }
   };
 
@@ -227,12 +247,11 @@ export default function TeamManagement() {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-      if (jsonData.length === 0) {
-        throw new Error('ไม่พบข้อมูลในไฟล์');
-      }
+      if (jsonData.length === 0) throw new Error('ไม่พบข้อมูลในไฟล์');
 
       let successCount = 0;
       let errorCount = 0;
+      let duplicateCount = 0;
 
       for (const row of jsonData) {
         try {
@@ -243,13 +262,24 @@ export default function TeamManagement() {
           if (!teamName || !levelKey) continue;
 
           const members: TeamMember[] = [];
+          let hasDuplicate = false;
           for (let i = 1; i <= 3; i++) {
             const mName = row[`ชื่อสมาชิก ${i}`]?.toString().trim();
             const mId = row[`เลขบัตรประชาชน ${i}`]?.toString().trim();
             const mBirth = row[`วันเกิดสมาชิก ${i} (YYYY-MM-DD)`]?.toString().trim();
+            
             if (mName && mId && mBirth) {
+              if (checkDuplicateIdCard(mId)) {
+                hasDuplicate = true;
+                break;
+              }
               members.push({ name: mName, idCard: mId, birthDate: mBirth });
             }
+          }
+
+          if (hasDuplicate) {
+            duplicateCount++;
+            continue;
           }
 
           if (members.length === 0) continue;
@@ -266,15 +296,12 @@ export default function TeamManagement() {
         }
       }
 
-      setImportSuccess(`นำเข้าสำเร็จ ${successCount} ทีม ${errorCount > 0 ? `(ผิดพลาด ${errorCount} ทีม)` : ''}`);
-      await sendNotification({
-        title: 'นำเข้าทีมสำเร็จ',
-        message: `นำเข้าข้อมูลทีมทั้งหมด ${successCount} ทีมสำเร็จ`,
-        type: 'success',
-        targetRole: 'admin'
-      });
+      const msg = `นำเข้าสำเร็จ ${successCount} ทีม ${duplicateCount > 0 ? `(ซ้ำ ${duplicateCount} ทีม)` : ''} ${errorCount > 0 ? `(ผิดพลาด ${errorCount} ทีม)` : ''}`;
+      setImportSuccess(msg);
+      showToast(msg, 'success');
     } catch (err: any) {
       setError(err.message || 'เกิดข้อผิดพลาดในการนำเข้าไฟล์');
+      showToast('นำเข้าไฟล์ไม่สำเร็จ', 'error');
     } finally {
       setImportLoading(false);
       if (e.target) e.target.value = '';
