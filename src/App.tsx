@@ -645,10 +645,10 @@ const Login = () => {
     if (!recoveryId.trim()) return;
     
     // In a real app, this would send an email or log a request
-    if (recoveryId === 'sumetee11') {
+    if (recoveryId === 'sumetee1122') {
       setRecoveryMessage('เนื่องจากท่านเป็น Super Admin กรุณาตรวจสอบรหัสผ่านในระบบฐานข้อมูลโดยตรง หรือติดต่อผู้พัฒนาระบบ');
     } else {
-      setRecoveryMessage('ระบบได้รับคำขอของท่านแล้ว กรุณาติดต่อ Super Admin (sumetee11) เพื่อขอรีเซ็ตรหัสผ่านของท่าน');
+      setRecoveryMessage('ระบบได้รับคำขอของท่านแล้ว กรุณาติดต่อ Super Admin (sumetee1122) เพื่อขอรีเซ็ตรหัสผ่านของท่าน');
     }
   };
 
@@ -940,14 +940,14 @@ export default function App() {
     // Bootstrap default admin
     const bootstrapAdmin = async () => {
       try {
-        const adminId = 'sumetee11';
+        const adminId = 'sumetee1122';
         const q = query(collection(db, 'users'), where('adminId', '==', adminId), where('role', '==', 'admin'));
         const snap = await getDocs(q);
         if (snap.empty) {
           await setDoc(doc(db, 'users', 'admin_' + adminId), {
             uid: 'admin_' + adminId,
             adminId: adminId,
-            password: '123456789',
+            password: '123456789sk',
             role: 'admin',
             levels: ['primary', 'junior_high', 'senior_high'],
             displayName: 'Super Admin'
