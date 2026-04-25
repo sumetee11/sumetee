@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext, ToastContext } from '../App';
+import { AuthContext, ToastContext, PopupContext } from '../App';
 import { sendNotification } from '../services/notificationService';
 import { ClipboardCheck, Plus, Trash2, Edit3, X, Check, AlertCircle, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -31,6 +31,7 @@ interface CompetitionType {
 export default function CompetitionManagement() {
   const { isAdmin } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+  const { showPopup } = useContext(PopupContext);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,9 +126,11 @@ export default function CompetitionManagement() {
     try {
       if (editingComp) {
         await setDoc(doc(db, 'competitions', editingComp.id), formData);
+        showPopup('อัปเดตสำเร็จ!', `แก้ไขข้อมูลรายการ "${formData.name}" เรียบร้อยแล้ว`, 'success');
         showToast('อัปเดตรายการแข่งขันสำเร็จ', 'success');
       } else {
         await addDoc(collection(db, 'competitions'), formData);
+        showPopup('บันทึกสำเร็จ!', `เพิ่มรายการแข่งขัน "${formData.name}" เรียบร้อยแล้ว`, 'success');
         showToast('เพิ่มรายการแข่งขันใหม่สำเร็จ', 'success');
         await sendNotification({
           title: 'รายการแข่งขันใหม่',
@@ -139,18 +142,25 @@ export default function CompetitionManagement() {
       setIsModalOpen(false);
     } catch (err) {
       handleFirestoreError(err, editingComp ? OperationType.UPDATE : OperationType.CREATE, editingComp ? `competitions/${editingComp.id}` : 'competitions');
+      showPopup('บันทึกไม่สำเร็จ', 'เกิดข้อผิดพลาดในการบันทึกข้อมูลรายการแข่งขัน', 'error');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('คุณต้องการลบรายการแข่งขันนี้ใช่หรือไม่?')) return;
-    try {
-      await deleteDoc(doc(db, 'competitions', id));
-      showToast('ลบรายการแข่งขันสำเร็จ', 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `competitions/${id}`);
-      showToast('ไม่สามารถลบรายการแข่งขันได้', 'error');
-    }
+  const handleDelete = (id: string) => {
+    showPopup(
+      'ยืนยันการลบ',
+      'คุณต้องการลบรายการแข่งขันนี้ใช่หรือไม่? ข้อมูลการแข่งขันและคะแนนที่เกี่ยวข้องอาจได้รับผลกระทบ',
+      'confirm',
+      async () => {
+        try {
+          await deleteDoc(doc(db, 'competitions', id));
+          showToast('ลบรายการแข่งขันสำเร็จ', 'success');
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `competitions/${id}`);
+          showToast('ไม่สามารถลบรายการแข่งขันได้', 'error');
+        }
+      }
+    );
   };
 
   if (loading) {
@@ -180,45 +190,90 @@ export default function CompetitionManagement() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {competitionTypes.map(type => (
-          <div key={type.key} className="space-y-4">
-            <h2 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 px-2">
-              <Trophy className="w-4 h-4" />
-              {type.name}
-            </h2>
-            <div className="space-y-3">
-              {competitions.filter(c => c.levelKey === type.key).map(comp => (
-                <motion.div
-                  key={comp.id}
-                  layout
-                  className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center group hover:shadow-md transition-all"
-                >
-                  <div className="font-bold text-gray-900">{comp.name}</div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {competitions.length === 0 ? (
+          <div className="col-span-full p-20 text-center bg-white rounded-[40px] border-2 border-dashed border-gray-100">
+            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <ClipboardCheck className="w-10 h-10 text-gray-300" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">ยังไม่มีรายการแข่งขัน</h3>
+            <p className="text-gray-500">เริ่มต้นโดยการกดปุ่ม "เพิ่มรายการใหม่" ด้านบนเพื่อกำหนดหัวข้อการแข่งขัน</p>
+          </div>
+        ) : (
+          [...competitions]
+            .sort((a, b) => {
+              const levelA = competitionTypes.findIndex(t => t.key === a.levelKey);
+              const levelB = competitionTypes.findIndex(t => t.key === b.levelKey);
+              if (levelA !== levelB) return levelA - levelB;
+              return a.name.localeCompare(b.name);
+            })
+            .map((comp) => {
+            const level = competitionTypes.find(t => t.key === comp.levelKey);
+            const themeColor = comp.theme || 'blue';
+            
+            const themeClasses = {
+              blue: { bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-600', shadow: 'shadow-blue-100', border: 'border-blue-100' },
+              purple: { bg: 'bg-purple-50', text: 'text-purple-600', dot: 'bg-purple-600', shadow: 'shadow-purple-100', border: 'border-purple-100' },
+              orange: { bg: 'bg-orange-50', text: 'text-orange-600', dot: 'bg-orange-600', shadow: 'shadow-orange-100', border: 'border-orange-100' },
+              emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-600', shadow: 'shadow-emerald-100', border: 'border-emerald-100' },
+              rose: { bg: 'bg-rose-50', text: 'text-rose-600', dot: 'bg-rose-600', shadow: 'shadow-rose-100', border: 'border-rose-100' },
+            }[themeColor];
+
+            return (
+              <motion.div
+                key={comp.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden flex flex-col group hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+              >
+                <div className={cn("h-4", themeClasses.dot)} />
+                <div className="p-6 flex-1 flex flex-col">
+                  <div className="flex justify-between items-start mb-4">
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider",
+                      themeClasses.bg, themeClasses.text
+                    )}>
+                      {level?.name || comp.levelKey}
+                    </span>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-gray-400">
+                      <div className={cn("w-2 h-2 rounded-full", themeClasses.dot)} />
+                      MAX {comp.maxScore || 100}
+                    </div>
+                  </div>
+
+                  <h3 className="text-xl font-black text-gray-900 mb-2 leading-tight">
+                    {comp.name}
+                  </h3>
+                  
+                  <div className="mt-2 space-y-2 flex-1">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <Check className="w-3.5 h-3.5" />
+                      {comp.missions?.length || 0} ภารกิจย่อยในรายการ
+                    </div>
+                  </div>
+
+                  <div className="mt-8 grid grid-cols-2 gap-3">
                     <button
                       onClick={() => handleOpenModal(comp)}
-                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                      className="flex items-center justify-center gap-2 py-3 px-4 bg-gray-50 text-gray-600 rounded-2xl font-bold hover:bg-blue-50 hover:text-blue-600 transition-all border border-transparent hover:border-blue-100"
                     >
                       <Edit3 className="w-4 h-4" />
+                      แก้ไข
                     </button>
                     <button
                       onClick={() => handleDelete(comp.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                      className="flex items-center justify-center gap-2 py-3 px-4 bg-gray-50 text-gray-600 rounded-2xl font-bold hover:bg-red-50 hover:text-red-600 transition-all border border-transparent hover:border-red-100"
                     >
                       <Trash2 className="w-4 h-4" />
+                      ลบออก
                     </button>
                   </div>
-                </motion.div>
-              ))}
-              {competitions.filter(c => c.levelKey === type.key).length === 0 && (
-                <div className="p-8 text-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-100 text-gray-400 text-sm italic">
-                  ยังไม่มีรายการแข่งขัน
                 </div>
-              )}
-            </div>
-          </div>
-        ))}
+              </motion.div>
+            );
+          })
+        )}
       </div>
 
       {/* Modal */}

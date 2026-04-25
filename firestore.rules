@@ -1,70 +1,83 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
     // ===============================================================
-    // Helper Functions
+    // 0. Global Safety Net
     // ===============================================================
-    function isAuthenticated() {
-      return request.auth != null;
+    match /{document=**} {
+      allow read, write: if false;
     }
 
+    // ===============================================================
+    // 3. Path Variable Hardening (Helpers)
+    // ===============================================================
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    
+    // Identity lookup helpers
+    function getUserDoc(authUid) {
+      return get(/databases/$(database)/documents/users_auth/$(authUid));
+    }
+    
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "k.sumetee@gmail.com" && request.auth.token.email_verified == true));
+      return isSignedIn() && (
+        (getUserDoc(request.auth.uid).data.role == 'admin') ||
+        (request.auth.token.email == "k.sumetee@gmail.com" && request.auth.token.email_verified == true)
+      );
     }
-
+    
     function isJudge() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'judge';
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && getUserDoc(request.auth.uid).data.role == 'judge';
     }
 
     // ===============================================================
-    // Domain Validators
+    // 2. Validation Blueprints (Anti-Update-Gap)
     // ===============================================================
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'role', 'displayName']) &&
-             data.uid is string &&
-             data.role in ['admin', 'judge'] &&
-             data.displayName is string && data.displayName.size() < 100;
+    
+    function isValidScore(data) {
+      return data.keys().hasAll(['teamId', 'competitionId', 'judgeId', 'score', 'round', 'createdAt']) &&
+             data.keys().size() >= 6 &&
+             isValidId(data.teamId) &&
+             isValidId(data.competitionId) &&
+             isValidId(data.judgeId) &&
+             data.score is number && data.score >= 0 && data.score <= 1000 &&
+             data.round is number && data.round >= 1 &&
+             data.createdAt == request.time;
     }
 
     function isValidTeam(data) {
       return data.keys().hasAll(['name', 'levelKey', 'members']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.levelKey is string &&
-             data.members is list && data.members.size() <= 5;
-    }
-
-    function isValidScore(data) {
-      return data.keys().hasAll(['teamId', 'competitionId', 'judgeId', 'score', 'round']) &&
-             data.teamId is string &&
-             data.competitionId is string &&
-             data.judgeId is string &&
-             data.score is number && data.score >= 0 &&
-             data.round is number;
-    }
-
-    function isValidCompetition(data) {
-      return data.keys().hasAll(['name', 'levelKey']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.levelKey is string;
+             data.members is list && data.members.size() >= 1;
     }
 
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /users_auth/{authUid} {
+      allow read: if isSignedIn() && (request.auth.uid == authUid || isAdmin());
+      // Binding requires matching password from the private user profile
+      allow create: if isSignedIn() && 
+                    incoming().keys().hasAll(['role', 'profileUid', 'password']) && 
+                    (isAdmin() || (
+                      incoming().role == 'judge' && 
+                      get(/databases/$(database)/documents/users/$(incoming().profileUid)).data.password == incoming().password
+                    ));
+      allow update, delete: if isAdmin();
+    }
+
     match /users/{userId} {
-      // Allow public read for custom login system (Judge/Admin lookup)
-      // WARNING: This allows anyone to query the users collection. 
-      // In a production app, use Firebase Auth with custom claims instead of custom password fields.
-      allow read: if true;
-      allow create, update: if isAdmin() || isOwner(userId);
-      allow delete: if isAdmin();
+      allow get: if true;
+      allow list: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /competition_types/{typeId} {
@@ -79,28 +92,41 @@ service cloud.firestore {
 
     match /teams/{teamId} {
       allow read: if true;
-      allow create, update: if isAdmin();
-      allow delete: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    function isScoreImmutable(incoming, existing) {
+      return incoming.teamId == existing.teamId &&
+             incoming.competitionId == existing.competitionId &&
+             incoming.judgeId == existing.judgeId &&
+             incoming.createdAt == existing.createdAt;
     }
 
     match /scores/{scoreId} {
-      allow read: if true;
-      allow create: if isAdmin() || isJudge();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if true; 
+      
+      allow create: if (isAdmin() || isJudge()) && isValidScore(incoming());
+      
+      allow update: if (isAdmin() || (isJudge() && incoming().judgeId == existing().judgeId)) && 
+                      isScoreImmutable(incoming(), existing()) &&
+                      incoming().keys().hasAll(['updatedAt']) &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['score', 'round', 'details', 'note', 'updatedAt']) &&
+                      incoming().updatedAt == request.time;
+                      
+      allow delete: if isAdmin() || (isJudge() && existing().judgeId == getUserDoc(request.auth.uid).data.profileUid);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (
+        getUserDoc(request.auth.uid).data.role == 'admin' || 
+        incoming().targetRole == 'all' ||
+        incoming().targetUid == request.auth.uid
+      );
+      allow write: if isAdmin();
     }
 
     match /connection_test/{docId} {
       allow read: if true;
-    }
-
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

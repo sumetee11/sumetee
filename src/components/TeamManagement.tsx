@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, addDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext, ToastContext } from '../App';
+import { AuthContext, ToastContext, PopupContext } from '../App';
 import { sendNotification } from '../services/notificationService';
-import { Users, Plus, Trash2, Edit3, X, Check, AlertCircle, School, Trophy, Search, UserPlus, FileUp, Download } from 'lucide-react';
+import { Users, Plus, Trash2, Edit3, X, Check, AlertCircle, School, Trophy, Search, UserPlus, FileUp, Download, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, handleFirestoreError, OperationType } from '../lib/utils';
 import * as XLSX from 'xlsx';
@@ -12,6 +12,7 @@ interface TeamMember {
   idCard: string;
   name: string;
   birthDate: string;
+  role: 'advisor' | 'student';
 }
 
 interface Team {
@@ -25,23 +26,33 @@ interface Team {
 interface CompetitionType {
   key: string;
   name: string;
+  minStudents?: number;
+  maxStudents?: number;
 }
 
 export default function TeamManagement() {
   const { isAdmin } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+  const { showPopup } = useContext(PopupContext);
   const [teams, setTeams] = useState<Team[]>([]);
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [search, setSearch] = useState('');
+  const [searchBy, setSearchBy] = useState<'name' | 'school' | 'member'>('name');
+  const [selectedLevelFilter, setSelectedLevelFilter] = useState('all');
   
   const [formData, setFormData] = useState({
     name: '',
     school: '',
     levelKey: '',
-    members: [{ idCard: '', name: '', birthDate: '' }] as TeamMember[]
+    members: [
+      { idCard: '', name: '', birthDate: '', role: 'advisor' },
+      { idCard: '', name: '', birthDate: '', role: 'student' },
+      { idCard: '', name: '', birthDate: '', role: 'student' }
+    ] as TeamMember[]
   });
   const [error, setError] = useState('');
   const [importLoading, setImportLoading] = useState(false);
@@ -84,21 +95,33 @@ export default function TeamManagement() {
   };
 
   const handleOpenModal = (team?: Team) => {
+    setIsSubmitted(false);
     if (team) {
       setEditingTeam(team);
       setFormData({
         name: team.name,
         school: team.school || '',
         levelKey: team.levelKey,
-        members: team.members.length > 0 ? team.members : [{ idCard: '', name: '', birthDate: '' }]
+        members: team.members.length > 0 ? team.members.map(m => ({ ...m, role: m.role || 'student' })) : [
+          { idCard: '', name: '', birthDate: '', role: 'advisor' },
+          { idCard: '', name: '', birthDate: '', role: 'student' },
+          { idCard: '', name: '', birthDate: '', role: 'student' }
+        ]
       });
     } else {
       setEditingTeam(null);
+      const defaultType = competitionTypes[0];
+      const defaultMinS = defaultType?.minStudents ?? 2;
+      const initialMembers: TeamMember[] = [{ idCard: '', name: '', birthDate: '', role: 'advisor' }];
+      for (let i = 0; i < defaultMinS; i++) {
+        initialMembers.push({ idCard: '', name: '', birthDate: '', role: 'student' });
+      }
+
       setFormData({
         name: '',
         school: '',
-        levelKey: competitionTypes[0]?.key || '',
-        members: [{ idCard: '', name: '', birthDate: '' }]
+        levelKey: defaultType?.key || '',
+        members: initialMembers
       });
     }
     setError('');
@@ -108,7 +131,7 @@ export default function TeamManagement() {
   const addMember = () => {
     setFormData(prev => ({
       ...prev,
-      members: [...prev.members, { idCard: '', name: '', birthDate: '' }]
+      members: [...prev.members, { idCard: '', name: '', birthDate: '', role: 'student' }]
     }));
   };
 
@@ -148,16 +171,39 @@ export default function TeamManagement() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSubmitted(true);
 
-    if (!formData.name.trim() || !formData.levelKey || formData.members.length === 0) {
-      setError('กรุณากรอกข้อมูลให้ครบถ้วน');
+    if (!formData.name.trim() || !formData.levelKey) {
+      setError('กรุณากรอกข้อมูลทีมให้ครบถ้วน');
+      return;
+    }
+
+    const students = formData.members.filter(m => m.role === 'student');
+    const advisors = formData.members.filter(m => m.role === 'advisor');
+
+    const selectedType = competitionTypes.find(t => t.key === formData.levelKey);
+    const minS = selectedType?.minStudents ?? 2;
+    const maxS = selectedType?.maxStudents ?? 3;
+
+    if (students.length < minS) {
+      setError(`ทีมระดับนี้ต้องมีนักเรียนอย่างน้อย ${minS} คน`);
+      return;
+    }
+
+    if (students.length > maxS) {
+      setError(`ทีมระดับนี้มีนักเรียนได้สูงสุด ${maxS} คน`);
+      return;
+    }
+
+    if (advisors.length < 1) {
+      setError('ทีมต้องมีครูที่ปรึกษาอย่างน้อย 1 คน');
       return;
     }
 
     const currentIdCards = new Set();
     for (const member of formData.members) {
-      if (!member.idCard.trim() || !member.name.trim() || !member.birthDate) {
-        setError('กรุณากรอกข้อมูลสมาชิกให้ครบถ้วน');
+      if (!member.idCard.trim() || !member.name.trim() || !member.birthDate || !member.role) {
+        setError('กรุณากรอกข้อมูลสมาชิกทุกคนให้ครบถ้วน');
         return;
       }
       if (!validateIdCard(member.idCard)) {
@@ -180,9 +226,11 @@ export default function TeamManagement() {
     try {
       if (editingTeam) {
         await setDoc(doc(db, 'teams', editingTeam.id), formData);
+        showPopup('บันทึกสำเร็จ!', `แก้ไขข้อมูลทีม "${formData.name}" เรียบร้อยแล้ว`, 'success');
         showToast('แก้ไขข้อมูลทีมสำเร็จ', 'success');
       } else {
         await addDoc(collection(db, 'teams'), formData);
+        showPopup('บันทึกสำเร็จ!', `ลงทะเบียนทีม "${formData.name}" เรียบร้อยแล้ว`, 'success');
         showToast('ลงทะเบียนทีมใหม่สำเร็จ', 'success');
         await sendNotification({
           title: 'ลงทะเบียนทีมใหม่',
@@ -194,19 +242,26 @@ export default function TeamManagement() {
       setIsModalOpen(false);
     } catch (err) {
       handleFirestoreError(err, editingTeam ? OperationType.UPDATE : OperationType.CREATE, editingTeam ? `teams/${editingTeam.id}` : 'teams');
+      showPopup('บันทึกไม่สำเร็จ', 'ไม่สามารถบันทึกข้อมูลได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง', 'error');
       showToast('ไม่สามารถบันทึกข้อมูลได้', 'error');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('คุณต้องการลบทีมนี้ใช่หรือไม่?')) return;
-    try {
-      await deleteDoc(doc(db, 'teams', id));
-      showToast('ลบทีมสำเร็จ', 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `teams/${id}`);
-      showToast('ไม่สามารถลบทีมได้', 'error');
-    }
+  const handleDelete = (id: string) => {
+    showPopup(
+      'ยืนยันการลบทีม',
+      'คุณต้องการลบทีมนี้ใช่หรือไม่? ข้อมูลการบันทึกคะแนนทั้งหมดของทีมนี้จะหายไป',
+      'confirm',
+      async () => {
+        try {
+          await deleteDoc(doc(db, 'teams', id));
+          showToast('ลบทีมสำเร็จ', 'success');
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `teams/${id}`);
+          showToast('ไม่สามารถลบทีมได้', 'error');
+        }
+      }
+    );
   };
 
   const handleExportTemplate = () => {
@@ -214,16 +269,31 @@ export default function TeamManagement() {
       {
         'ชื่อทีม': 'ตัวอย่างทีม A',
         'โรงเรียน': 'โรงเรียนตัวอย่าง',
-        'ระดับ (primary/junior_high/senior_high)': 'primary',
+        'ระดับการแข่งขัน (ใส่ Key เช่น primary, junior_high, senior_high)': 'primary',
         'ชื่อสมาชิก 1': 'นายสมชาย ใจดี',
         'เลขบัตรประชาชน 1': '1234567890123',
-        'วันเกิดสมาชิก 1 (YYYY-MM-DD)': '2010-05-15',
+        'วันเกิดสมาชิก 1 (ปี-เดือน-วัน เช่น 2010-05-15)': '2010-05-15',
+        'สถานะสมาชิก 1 (advisor หรือ student)': 'advisor',
         'ชื่อสมาชิก 2': 'นางสาวสมศรี มีสุข',
         'เลขบัตรประชาชน 2': '1234567890124',
-        'วันเกิดสมาชิก 2 (YYYY-MM-DD)': '2011-08-20',
-        'ชื่อสมาชิก 3': '',
-        'เลขบัตรประชาชน 3': '',
-        'วันเกิดสมาชิก 3 (YYYY-MM-DD)': ''
+        'วันเกิดสมาชิก 2 (ปี-เดือน-วัน)': '2011-08-20',
+        'สถานะสมาชิก 2 (advisor หรือ student)': 'student',
+        'ชื่อสมาชิก 3': 'เด็กชายมานะ อดทน',
+        'เลขบัตรประชาชน 3': '1234567890125',
+        'วันเกิดสมาชิก 3 (ปี-เดือน-วัน)': '2012-01-10',
+        'สถานะสมาชิก 3 (advisor หรือ student)': 'student',
+        'ชื่อสมาชิก 4': '',
+        'เลขบัตรประชาชน 4': '',
+        'วันเกิดสมาชิก 4': '',
+        'สถานะสมาชิก 4': '',
+        'ชื่อสมาชิก 5': '',
+        'เลขบัตรประชาชน 5': '',
+        'วันเกิดสมาชิก 5': '',
+        'สถานะสมาชิก 5': '',
+        'ชื่อสมาชิก 6': '',
+        'เลขบัตรประชาชน 6': '',
+        'วันเกิดสมาชิก 6': '',
+        'สถานะสมาชิก 6': ''
       }
     ];
 
@@ -257,23 +327,48 @@ export default function TeamManagement() {
         try {
           const teamName = row['ชื่อทีม']?.toString().trim();
           const school = row['โรงเรียน']?.toString().trim();
-          const levelKey = row['ระดับ (primary/junior_high/senior_high)']?.toString().trim();
+          let levelKey = row['ระดับการแข่งขัน (ใส่ Key เช่น primary, junior_high, senior_high)']?.toString().trim();
+          
+          if (!levelKey) {
+            levelKey = row['ระดับ (primary/junior_high/senior_high)']?.toString().trim();
+          }
 
           if (!teamName || !levelKey) continue;
 
           const members: TeamMember[] = [];
           let hasDuplicate = false;
-          for (let i = 1; i <= 3; i++) {
+          
+          // Support up to 10 members just in case, but template has 6
+          for (let i = 1; i <= 10; i++) {
             const mName = row[`ชื่อสมาชิก ${i}`]?.toString().trim();
             const mId = row[`เลขบัตรประชาชน ${i}`]?.toString().trim();
-            const mBirth = row[`วันเกิดสมาชิก ${i} (YYYY-MM-DD)`]?.toString().trim();
+            let mBirth = row[`วันเกิดสมาชิก ${i} (ปี-เดือน-วัน เช่น 2010-05-15)`]?.toString().trim();
             
-            if (mName && mId && mBirth) {
+            if (!mBirth) {
+              mBirth = row[`วันเกิดสมาชิก ${i} (YYYY-MM-DD)`]?.toString().trim();
+            }
+            if (!mBirth) {
+              mBirth = row[`วันเกิดสมาชิก ${i}`]?.toString().trim();
+            }
+
+            let mRoleRaw = row[`สถานะสมาชิก ${i} (advisor หรือ student)`]?.toString().trim().toLowerCase();
+            if (!mRoleRaw) {
+              mRoleRaw = row[`สถานะสมาชิก ${i} (advisor/student)`]?.toString().trim().toLowerCase();
+            }
+            
+            const mRole = mRoleRaw === 'advisor' ? 'advisor' : 'student';
+            
+            if (mName && mId) {
               if (checkDuplicateIdCard(mId)) {
                 hasDuplicate = true;
                 break;
               }
-              members.push({ name: mName, idCard: mId, birthDate: mBirth });
+              members.push({ 
+                name: mName, 
+                idCard: mId, 
+                birthDate: mBirth || '', 
+                role: mRole 
+              });
             }
           }
 
@@ -282,7 +377,14 @@ export default function TeamManagement() {
             continue;
           }
 
-          if (members.length === 0) continue;
+          const studentsCount = members.filter(m => m.role === 'student').length;
+          const advisorsCount = members.filter(m => m.role === 'advisor').length;
+
+          const selectedType = competitionTypes.find(t => t.key === levelKey);
+          const minS = selectedType?.minStudents ?? 2;
+          const maxS = selectedType?.maxStudents ?? 3;
+
+          if (studentsCount < minS || studentsCount > maxS || advisorsCount < 1) continue; // Dynamic requirements
 
           await addDoc(collection(db, 'teams'), {
             name: teamName,
@@ -308,10 +410,24 @@ export default function TeamManagement() {
     }
   };
 
-  const filteredTeams = teams.filter(t => 
-    t.name.toLowerCase().includes(search.toLowerCase()) ||
-    t.school?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredTeams = teams.filter(t => {
+    // Level filter
+    if (selectedLevelFilter !== 'all' && t.levelKey !== selectedLevelFilter) return false;
+
+    const searchLower = search.toLowerCase();
+    if (!searchLower) return true;
+    
+    switch (searchBy) {
+      case 'name':
+        return t.name.toLowerCase().includes(searchLower);
+      case 'school':
+        return t.school?.toLowerCase().includes(searchLower);
+      case 'member':
+        return t.members.some(m => m.name.toLowerCase().includes(searchLower));
+      default:
+        return true;
+    }
+  });
 
   if (loading) {
     return (
@@ -376,17 +492,64 @@ export default function TeamManagement() {
         </div>
       )}
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="p-6 bg-white rounded-[32px] border border-gray-100 shadow-sm">
+          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 font-mono">Total Participation</div>
+          <div className="text-3xl font-black text-gray-900">{teams.length} <span className="text-sm text-gray-400">ทีม</span></div>
+        </div>
+        {competitionTypes.map(type => {
+          const count = teams.filter(t => t.levelKey === type.key).length;
+          return (
+            <div key={type.key} className="p-6 bg-white rounded-[32px] border border-gray-100 shadow-sm border-l-4 border-l-blue-500">
+              <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 truncate font-mono" title={type.name}>{type.name}</div>
+              <div className="text-3xl font-black text-blue-600">{count} <span className="text-sm text-blue-200">ทีม</span></div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-50">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="ค้นหาชื่อทีมหรือโรงเรียน..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-            />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative w-full sm:w-48">
+              <select
+                value={selectedLevelFilter}
+                onChange={(e) => setSelectedLevelFilter(e.target.value)}
+                className="w-full pl-4 pr-10 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none font-bold text-gray-600 cursor-pointer"
+              >
+                <option value="all">ทุกระดับ</option>
+                {competitionTypes.map(type => (
+                  <option key={type.key} value={type.key}>{type.name}</option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="relative w-full sm:w-48">
+              <select
+                value={searchBy}
+                onChange={(e) => setSearchBy(e.target.value as any)}
+                className="w-full pl-4 pr-10 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none font-bold text-gray-600 cursor-pointer"
+              >
+                <option value="name">ชื่อทีม</option>
+                <option value="school">โรงเรียน</option>
+                <option value="member">ชื่อสมาชิก</option>
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder={`ค้นหาตาม${searchBy === 'name' ? 'ชื่อทีม' : searchBy === 'school' ? 'ชื่อโรงเรียน' : 'ชื่อสมาชิก'}...`}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+              />
+            </div>
           </div>
         </div>
 
@@ -416,17 +579,22 @@ export default function TeamManagement() {
                     </span>
                   </td>
                   <td className="px-8 py-6">
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {team.members.map((m, idx) => {
                         const age = calculateAge(m.birthDate);
                         return (
                           <div key={idx} className="text-sm text-gray-600 flex flex-col gap-0.5">
                             <div className="flex items-center gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
+                                m.role === 'advisor' ? "bg-orange-100 text-orange-600" : "bg-blue-100 text-blue-600"
+                              )}>
+                                {m.role === 'advisor' ? 'ครูที่ปรึกษา' : 'นักเรียน'}
+                              </span>
                               <span className="font-bold">{m.name}</span>
                               <span className="text-[10px] text-gray-400 font-mono">({m.idCard})</span>
                             </div>
-                            <div className="pl-3.5 text-[10px] text-gray-400 flex items-center gap-2">
+                            <div className="pl-0 text-[10px] text-gray-400 flex items-center gap-2">
                               <span>เกิด: {m.birthDate || 'N/A'}</span>
                               <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 font-bold">
                                 อายุ: {age !== null ? `${age} ปี` : 'N/A'}
@@ -501,7 +669,10 @@ export default function TeamManagement() {
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+                      className={cn(
+                        "w-full px-4 py-3 bg-gray-50 border-2 rounded-2xl focus:ring-2 outline-none transition-all",
+                        isSubmitted && !formData.name.trim() ? "border-red-300 focus:ring-red-500 shadow-sm shadow-red-50" : "border-transparent focus:ring-blue-500"
+                      )}
                       placeholder="ระบุชื่อทีม"
                     />
                   </div>
@@ -525,7 +696,10 @@ export default function TeamManagement() {
                     type="text"
                     value={formData.school}
                     onChange={(e) => setFormData({ ...formData, school: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className={cn(
+                      "w-full px-4 py-3 bg-gray-50 border-2 rounded-2xl focus:ring-2 outline-none transition-all",
+                      isSubmitted && !formData.school.trim() ? "border-red-300 focus:ring-red-500 shadow-sm shadow-red-50" : "border-transparent focus:ring-blue-500"
+                    )}
                     placeholder="ระบุชื่อโรงเรียน"
                   />
                 </div>
@@ -545,35 +719,77 @@ export default function TeamManagement() {
                   
                   <div className="space-y-3">
                     {formData.members.map((member, idx) => (
-                      <div key={idx} className="flex gap-3 items-start bg-gray-50 p-4 rounded-2xl relative group">
-                        <div className="flex-1 space-y-3">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              maxLength={13}
-                              value={member.idCard}
-                              onChange={(e) => updateMember(idx, 'idCard', e.target.value)}
-                              className={cn(
-                                "w-full px-4 py-2 bg-white border rounded-xl focus:ring-2 outline-none text-sm font-mono transition-all",
-                                member.idCard && !validateIdCard(member.idCard) 
-                                  ? "border-red-300 focus:ring-red-500 text-red-600" 
-                                  : "border-gray-100 focus:ring-blue-500 text-gray-900"
-                              )}
-                              placeholder="เลขบัตรประชาชน 13 หลัก"
-                            />
-                            {member.idCard && !validateIdCard(member.idCard) && (
-                              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-red-500">
-                                <AlertCircle className="w-4 h-4" />
-                              </div>
-                            )}
+                      <div key={idx} className={cn(
+                        "flex gap-3 items-start p-5 rounded-2xl relative group border-2 transition-all",
+                        isSubmitted && (!member.name.trim() || !member.idCard.trim() || !member.birthDate)
+                          ? "bg-red-50/30 border-red-100" 
+                          : "bg-gray-50 border-transparent"
+                      )}>
+                        <div className="flex-1 space-y-4">
+                          <div className="flex flex-wrap gap-4 items-center mb-1">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`role-${idx}`}
+                                value="student"
+                                checked={member.role === 'student' || !member.role}
+                                onChange={(e) => updateMember(idx, 'role', e.target.value)}
+                                className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-sm font-bold text-gray-700">นักเรียน</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`role-${idx}`}
+                                value="advisor"
+                                checked={member.role === 'advisor'}
+                                onChange={(e) => updateMember(idx, 'role', e.target.value)}
+                                className="w-4 h-4 text-orange-600 focus:ring-orange-500"
+                              />
+                              <span className="text-sm font-bold text-gray-700">ครูที่ปรึกษา</span>
+                            </label>
                           </div>
-                          <input
-                            type="text"
-                            value={member.name}
-                            onChange={(e) => updateMember(idx, 'name', e.target.value)}
-                            className="w-full px-4 py-2 bg-white border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                            placeholder="ชื่อ-นามสกุลสมาชิก"
-                          />
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="relative">
+                              <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">เลขบัตรประชาชน</label>
+                              <input
+                                type="text"
+                                maxLength={13}
+                                value={member.idCard}
+                                onChange={(e) => updateMember(idx, 'idCard', e.target.value)}
+                                className={cn(
+                                  "w-full px-4 py-2 bg-white border rounded-xl focus:ring-2 outline-none text-sm font-mono transition-all",
+                                  (member.idCard && !validateIdCard(member.idCard)) || (isSubmitted && !member.idCard)
+                                    ? "border-red-300 focus:ring-red-500 text-red-600 shadow-sm shadow-red-50" 
+                                    : "border-gray-100 focus:ring-blue-500 text-gray-900"
+                                )}
+                                placeholder="เลขบัตรประชาชน 13 หลัก"
+                              />
+                              {member.idCard && !validateIdCard(member.idCard) && (
+                                <div className="absolute right-3 bottom-2 text-red-500">
+                                  <AlertCircle className="w-4 h-4" />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">ชื่อ-นามสกุล</label>
+                              <input
+                                type="text"
+                                value={member.name}
+                                onChange={(e) => updateMember(idx, 'name', e.target.value)}
+                                className={cn(
+                                  "w-full px-4 py-2 bg-white border rounded-xl focus:ring-2 outline-none text-sm transition-all",
+                                  isSubmitted && !member.name.trim() 
+                                    ? "border-red-300 focus:ring-red-500 shadow-sm shadow-red-50" 
+                                    : "border-gray-100 focus:ring-blue-500 text-gray-900"
+                                )}
+                                placeholder="ชื่อ-นามสกุลสมาชิก"
+                              />
+                            </div>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">วัน/เดือน/ปีเกิด</label>
@@ -581,7 +797,12 @@ export default function TeamManagement() {
                                 type="date"
                                 value={member.birthDate}
                                 onChange={(e) => updateMember(idx, 'birthDate', e.target.value)}
-                                className="w-full px-4 py-2 bg-white border border-gray-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                className={cn(
+                                  "w-full px-4 py-2 bg-white border rounded-xl focus:ring-2 outline-none text-sm transition-all",
+                                  isSubmitted && !member.birthDate 
+                                    ? "border-red-300 focus:ring-red-500 shadow-sm shadow-red-50" 
+                                    : "border-gray-100 focus:ring-blue-500 text-gray-900"
+                                )}
                               />
                             </div>
                             <div>
@@ -592,11 +813,11 @@ export default function TeamManagement() {
                             </div>
                           </div>
                         </div>
-                        {formData.members.length > 1 && (
+                        {formData.members.length > 3 && (
                           <button
                             type="button"
                             onClick={() => removeMember(idx)}
-                            className="p-2 text-gray-300 hover:text-red-600 transition-colors"
+                            className="p-2 text-gray-300 hover:text-red-600 transition-colors mt-8"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import { collection, onSnapshot, query, where, getDocs, writeBatch, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { AuthContext, ToastContext } from '../App';
-import { Trophy, ShieldCheck, User, LayoutDashboard, ChevronRight, AlertCircle, ClipboardCheck, Medal, Trash2, X } from 'lucide-react';
+import { Trophy, ShieldCheck, User, LayoutDashboard, ChevronRight, AlertCircle, ClipboardCheck, Medal, Trash2, X, Timer, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
@@ -12,6 +12,8 @@ export default function Dashboard() {
   const { showToast } = useContext(ToastContext);
   const [competitionTypes, setCompetitionTypes] = useState<any[]>([]);
   const [competitions, setCompetitions] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [scores, setScores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -23,12 +25,22 @@ export default function Dashboard() {
 
     const unsubComps = onSnapshot(collection(db, 'competitions'), (snapshot) => {
       setCompetitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubTeams = onSnapshot(collection(db, 'teams'), (snapshot) => {
+      setTeams(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubScores = onSnapshot(collection(db, 'scores'), (snapshot) => {
+      setScores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     });
 
     return () => {
       unsubTypes();
       unsubComps();
+      unsubTeams();
+      unsubScores();
     };
   }, []);
 
@@ -193,11 +205,26 @@ export default function Dashboard() {
                   <ShieldCheck className="w-5 h-5 text-blue-600" />
                   ภาพรวมระบบ (System Overview)
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                   <div className="p-6 rounded-2xl bg-blue-50 border border-blue-100">
                     <div className="text-blue-600 font-black text-3xl mb-1">{competitionTypes.length}</div>
                     <div className="text-sm font-bold text-blue-800">ประเภทการแข่งขัน</div>
                   </div>
+                  <div className="p-6 rounded-2xl bg-indigo-50 border border-indigo-100">
+                    <div className="text-indigo-600 font-black text-3xl mb-1">{teams.length}</div>
+                    <div className="text-sm font-bold text-indigo-800">จำนวนทีมทั้งหมด</div>
+                  </div>
+                  <Link to="/pending-teams" className="p-6 rounded-2xl bg-orange-50 border border-orange-100 group hover:bg-orange-100 transition-all">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="text-orange-600 font-black text-3xl mb-1">
+                          <Timer className="w-8 h-8" />
+                        </div>
+                        <div className="text-sm font-bold text-orange-800">ทีมที่ยังไม่แข่ง</div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-orange-400 group-hover:text-orange-600 transition-colors" />
+                    </div>
+                  </Link>
                   <Link to="/rankings" className="p-6 rounded-2xl bg-yellow-50 border border-yellow-100 group hover:bg-yellow-100 transition-all">
                     <div className="flex justify-between items-start">
                       <div>
@@ -209,6 +236,65 @@ export default function Dashboard() {
                       <ChevronRight className="w-5 h-5 text-yellow-400 group-hover:text-yellow-600 transition-colors" />
                     </div>
                   </Link>
+                  <Link to="/reports" className="p-6 rounded-2xl bg-teal-50 border border-teal-100 group hover:bg-teal-100 transition-all">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="text-teal-600 font-black text-3xl mb-1">
+                          <FileText className="w-8 h-8" />
+                        </div>
+                        <div className="text-sm font-bold text-teal-800">ออกรายงาน</div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-teal-400 group-hover:text-teal-600 transition-colors" />
+                    </div>
+                  </Link>
+                </div>
+
+                <div className="bg-gray-50 rounded-2xl p-6">
+                  <h4 className="text-sm font-black text-gray-500 uppercase tracking-widest mb-4">จำนวนทีมแยกตามประเภท</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {competitionTypes.map(type => {
+                      const count = teams.filter(t => t.levelKey === type.key).length;
+                      const scoresInLevel = scores.filter(s => {
+                        const team = teams.find(t => t.id === s.teamId);
+                        return team?.levelKey === type.key;
+                      });
+                      
+                      // Count unique teams that have at least one score in round 1
+                      const completedCount = new Set(scoresInLevel.filter(s => s.round === 1).map(s => s.teamId)).size;
+                      const isPending = completedCount < count;
+
+                      return (
+                        <div key={type.key} className={cn(
+                          "bg-white p-4 rounded-xl border flex flex-col transition-all relative overflow-hidden",
+                          isPending ? "border-red-200 ring-1 ring-red-100 shadow-[0_0_10px_rgba(239,68,68,0.05)]" : "border-gray-100"
+                        )}>
+                          {isPending && (
+                            <div className="absolute top-0 right-0 p-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                            </div>
+                          )}
+                          <span className="text-[10px] font-black text-gray-400 uppercase leading-none mb-1">{type.key}</span>
+                          <span className="text-sm font-bold text-gray-700 mb-2 truncate" title={type.name}>{type.name}</span>
+                          <div className="mt-auto flex items-end justify-between">
+                            <div className="flex flex-col">
+                              <span className={cn(
+                                "text-2xl font-black",
+                                isPending ? "text-red-600" : "text-blue-600"
+                              )}>{count}</span>
+                              <span className="text-[8px] font-bold text-gray-300 uppercase tracking-tighter">Total Teams</span>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[8px] font-black text-gray-400 uppercase leading-none mb-0.5">Scored (R1)</div>
+                              <span className={cn(
+                                "text-sm font-black",
+                                isPending ? "text-orange-500" : "text-emerald-500"
+                              )}>{completedCount}/{count}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

@@ -29,7 +29,9 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string", "description": "Name of the level (Thai)" },
-        "key": { "type": "string", "description": "Internal key (primary, junior_high, senior_high)" }
+        "key": { "type": "string", "description": "Internal key (primary, junior_high, senior_high)" },
+        "minStudents": { "type": "number", "default": 2 },
+        "maxStudents": { "type": "number", "default": 3 }
       },
       "required": ["name", "key"]
     },
@@ -74,7 +76,8 @@
             "properties": {
               "idCard": { "type": "string", "description": "13-digit Thai ID Card" },
               "name": { "type": "string" },
-              "birthDate": { "type": "string", "format": "date", "description": "YYYY-MM-DD" }
+              "birthDate": { "type": "string", "format": "date", "description": "YYYY-MM-DD" },
+              "role": { "type": "string", "enum": ["advisor", "student"] }
             }
           }
         }

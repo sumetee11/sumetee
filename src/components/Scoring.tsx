@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, addDoc, where, serverTimestamp, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext, ToastContext } from '../App';
+import { AuthContext, ToastContext, PopupContext } from '../App';
 import { sendNotification } from '../services/notificationService';
 import { Trophy, ClipboardCheck, Plus, Trash2, Edit3, X, Check, AlertCircle, Search, User, School, History, ChevronDown, ChevronUp, Clock, Weight, RotateCcw, Target, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -55,6 +55,7 @@ interface CustomMission {
 export default function Scoring() {
   const { profile, isJudge, isAdmin } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+  const { showPopup } = useContext(PopupContext);
   const [teams, setTeams] = useState<Team[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
@@ -267,6 +268,7 @@ export default function Scoring() {
 
       await addDoc(collection(db, 'scores'), scoreData);
 
+      showPopup('บันทึกสำเร็จ!', `บันทึกคะแนน ${scoreValue} ให้กับทีม "${selectedTeam?.name}" เรียบร้อยแล้ว`, 'success');
       showToast('บันทึกคะแนนสำเร็จ', 'success');
       
       await sendNotification({
@@ -290,13 +292,17 @@ export default function Scoring() {
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'scores');
+      showPopup('บันทึกไม่สำเร็จ', 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDeleteScore = async (id: string) => {
-    if (!isAdmin) return;
+  const handleDeleteScore = async (id: string, scoreJudgeId?: string) => {
+    if (!isAdmin && profile?.uid !== scoreJudgeId) {
+      showToast('คุณไม่มีสิทธิ์ลบคะแนนนี้', 'error');
+      return;
+    }
     if (!window.confirm('คุณต้องการลบคะแนนนี้ใช่หรือไม่?')) return;
     try {
       await deleteDoc(doc(db, 'scores', id));
@@ -347,11 +353,14 @@ export default function Scoring() {
                     setSelectedCompId(e.target.value);
                     setSelectedTeamId('');
                   }}
-                  className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none text-lg font-medium"
+                  className={cn(
+                    "w-full px-4 py-3 bg-gray-50 border-2 rounded-2xl focus:ring-2 outline-none appearance-none text-lg font-medium transition-all text-gray-900 shadow-sm",
+                    validationErrors.includes('กรุณาเลือกรายการแข่งขัน') ? "border-red-500 ring-2 ring-red-100 shadow-lg shadow-red-50 bg-red-50/30" : "border-transparent focus:ring-blue-500"
+                  )}
                 >
                   <option value="">เลือกรายการแข่งขัน</option>
                   {competitions.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id} className="text-gray-900">{c.name}</option>
                   ))}
                 </select>
               </div>
@@ -362,11 +371,14 @@ export default function Scoring() {
                   value={selectedTeamId}
                   onChange={(e) => setSelectedTeamId(e.target.value)}
                   disabled={!selectedCompId}
-                  className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none disabled:opacity-50 text-lg font-medium"
+                  className={cn(
+                    "w-full px-4 py-3 bg-gray-50 border-2 rounded-2xl focus:ring-2 outline-none appearance-none disabled:opacity-50 text-lg font-medium transition-all text-gray-900 shadow-sm",
+                    validationErrors.includes('กรุณาเลือกทีมเข้าแข่งขัน') ? "border-red-500 ring-2 ring-red-100 shadow-lg shadow-red-50 bg-red-50/30" : "border-transparent focus:ring-blue-500"
+                  )}
                 >
                   <option value="">เลือกทีม</option>
                   {filteredTeams.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} ({t.school})</option>
+                    <option key={t.id} value={t.id} className="text-gray-900">{t.name} ({t.school})</option>
                   ))}
                 </select>
                 {selectedTeam && (
@@ -521,7 +533,10 @@ export default function Scoring() {
                         value={robotDetails.timeUsed}
                         onChange={(e) => setRobotDetails({ ...robotDetails, timeUsed: e.target.value })}
                         placeholder="00.00"
-                        className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-center text-2xl font-black text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        className={cn(
+                          "w-full bg-white border-2 rounded-2xl px-4 py-3 text-center text-2xl font-black text-gray-900 focus:ring-2 outline-none transition-all",
+                          validationErrors.some(e => e.includes('เวลาที่ใช้')) ? "border-red-500 ring-2 ring-red-100 shadow-lg shadow-red-50 bg-red-50/30" : "border-gray-200 focus:ring-emerald-500"
+                        )}
                       />
                     </div>
                   </div>
@@ -542,7 +557,10 @@ export default function Scoring() {
                         value={robotDetails.robotWeight}
                         onChange={(e) => setRobotDetails({ ...robotDetails, robotWeight: e.target.value })}
                         placeholder="0"
-                        className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-center text-2xl font-black text-gray-900 focus:ring-2 focus:ring-rose-500 outline-none transition-all"
+                        className={cn(
+                          "w-full bg-white border-2 rounded-2xl px-4 py-3 text-center text-2xl font-black text-gray-900 focus:ring-2 outline-none transition-all",
+                          validationErrors.includes('กรุณาระบุน้ำหนักหุ่นยนต์') ? "border-red-500 ring-2 ring-red-100 shadow-lg shadow-red-50 bg-red-50/30" : "border-gray-200 focus:ring-rose-500"
+                        )}
                       />
                     </div>
 
@@ -561,7 +579,10 @@ export default function Scoring() {
                         value={robotDetails.acknowledgment}
                         onChange={(e) => setRobotDetails({ ...robotDetails, acknowledgment: e.target.value })}
                         placeholder="ระบุชื่อ"
-                        className="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-center text-xl font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        className={cn(
+                          "w-full bg-white border-2 rounded-2xl px-4 py-3 text-center text-xl font-bold text-gray-900 focus:ring-2 outline-none transition-all",
+                          validationErrors.includes('กรุณาระบุชื่อผู้รับทราบคะแนน') ? "border-red-500 ring-2 ring-red-100 shadow-lg shadow-red-50 bg-red-50/30" : "border-gray-200 focus:ring-blue-500"
+                        )}
                       />
                     </div>
                   </div>
@@ -633,15 +654,15 @@ export default function Scoring() {
               </div>
 
               {error && (
-                <div className="p-4 bg-red-50 text-red-600 text-sm rounded-xl flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
+                <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl flex items-center gap-2 border border-red-100">
+                  <AlertCircle className="w-3.5 h-3.5" />
                   {error}
                 </div>
               )}
 
               {success && (
-                <div className="p-4 bg-green-50 text-green-600 text-sm rounded-xl flex items-center gap-2">
-                  <Check className="w-4 h-4" />
+                <div className="p-3 bg-green-50 text-green-600 text-xs rounded-xl flex items-center gap-2 border border-green-100">
+                  <Check className="w-3.5 h-3.5" />
                   {success}
                 </div>
               )}
@@ -776,11 +797,11 @@ export default function Scoring() {
                         <span className="text-[7px] text-gray-300">
                           {s.createdAt?.toDate ? new Date(s.createdAt.toDate()).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
-                        {isAdmin && (
+                        {(isAdmin || (isJudge && s.judgeId === profile?.uid)) && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteScore(s.id);
+                              handleDeleteScore(s.id, s.judgeId);
                             }}
                             className="text-gray-300 hover:text-red-600 transition-all p-1"
                           >
@@ -857,74 +878,76 @@ export default function Scoring() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="relative bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden"
+              className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-8">
-                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <ClipboardCheck className="w-8 h-8" />
+              <div className="p-6 border-b border-gray-100 flex-shrink-0">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ClipboardCheck className="w-6 h-6" />
                 </div>
-                <h3 className="text-2xl font-black text-gray-900 mb-2 text-center">ยืนยันการบันทึกคะแนน</h3>
-                <p className="text-gray-500 text-sm mb-8 text-center">
+                <h3 className="text-xl font-black text-gray-900 mb-1 text-center">ยืนยันการบันทึกคะแนน</h3>
+                <p className="text-gray-500 text-xs text-center">
                   กรุณาตรวจสอบความถูกต้องของข้อมูลทั้งหมดก่อนกดยืนยัน
                 </p>
+              </div>
 
-                <div className="space-y-4 mb-8">
-                  <div className="bg-gray-50 rounded-2xl p-5 space-y-3">
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                      <span className="text-sm font-bold text-gray-500">ทีม</span>
-                      <span className="text-sm font-black text-gray-900">{selectedTeam?.name}</span>
+              <div className="p-6 overflow-y-auto custom-scrollbar">
+                <div className="space-y-4 mb-2">
+                  <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-gray-200">
+                      <span className="text-xs font-bold text-gray-500">ทีม</span>
+                      <span className="text-xs font-black text-gray-900">{selectedTeam?.name}</span>
                     </div>
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                      <span className="text-sm font-bold text-gray-500">รายการแข่งขัน</span>
-                      <span className="text-sm font-black text-gray-900">{selectedComp?.name}</span>
+                    <div className="flex justify-between items-center pb-2 border-b border-gray-200">
+                      <span className="text-xs font-bold text-gray-500">รายการแข่งขัน</span>
+                      <span className="text-xs font-black text-gray-900 truncate max-w-[200px]">{selectedComp?.name}</span>
                     </div>
-                    <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                      <span className="text-sm font-bold text-gray-500">รอบที่</span>
-                      <span className="text-sm font-black text-gray-900">{round}</span>
+                    <div className="flex justify-between items-center pb-2 border-b border-gray-200">
+                      <span className="text-xs font-bold text-gray-500">รอบที่</span>
+                      <span className="text-xs font-black text-gray-900">{round}</span>
                     </div>
                     
                     {levelConfig && (
-                      <div className="grid grid-cols-2 gap-3 pt-1">
-                        <div className="bg-white p-3 rounded-xl border border-gray-100">
-                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">เวลาที่ใช้</div>
-                          <div className="text-sm font-black text-gray-900">{robotDetails.timeUsed} น.</div>
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                          <div className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">เวลาที่ใช้</div>
+                          <div className="text-xs font-black text-gray-900">{robotDetails.timeUsed} น.</div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-gray-100">
-                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Retry</div>
-                          <div className="text-sm font-black text-gray-900">{robotDetails.retryCount} ครั้ง</div>
+                        <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                          <div className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">Retry</div>
+                          <div className="text-xs font-black text-gray-900">{robotDetails.retryCount} ครั้ง</div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-gray-100">
-                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">น้ำหนัก</div>
-                          <div className="text-sm font-black text-gray-900">{robotDetails.robotWeight} กรัม</div>
+                        <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                          <div className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">น้ำหนัก</div>
+                          <div className="text-xs font-black text-gray-900">{robotDetails.robotWeight} กรัม</div>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-gray-100">
-                          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">ผู้รับทราบ</div>
-                          <div className="text-sm font-black text-gray-900 truncate">{robotDetails.acknowledgment}</div>
+                        <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                          <div className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">ผู้รับทราบ</div>
+                          <div className="text-xs font-black text-gray-900 truncate">{robotDetails.acknowledgment}</div>
                         </div>
                       </div>
                     )}
 
-                    <div className="pt-3 flex justify-between items-center">
-                      <span className="text-lg font-black text-gray-900">คะแนนรวมสุทธิ</span>
-                      <span className="text-3xl font-black text-blue-600">{scoreValue} <span className="text-sm text-gray-400">แต้ม</span></span>
+                    <div className="pt-2 flex justify-between items-center">
+                      <span className="text-base font-black text-gray-900">คะแนนรวมสุทธิ</span>
+                      <span className="text-2xl font-black text-blue-600">{scoreValue} <span className="text-xs text-gray-400">แต้ม</span></span>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setShowConfirm(false)}
-                    className="flex-1 bg-gray-100 text-gray-600 py-4 rounded-2xl font-bold hover:bg-gray-200 transition-all"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    onClick={handleSubmit}
-                    className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-                  >
-                    ยืนยันบันทึก
-                  </button>
-                </div>
+              <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3 flex-shrink-0">
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="flex-1 bg-white text-gray-600 py-3.5 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-all text-sm"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 text-sm"
+                >
+                  ยืนยันบันทึก
+                </button>
               </div>
             </motion.div>
           </div>

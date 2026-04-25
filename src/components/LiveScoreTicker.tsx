@@ -16,7 +16,7 @@ interface TickerScore {
 
 export default function LiveScoreTicker() {
   const [recentScores, setRecentScores] = useState<TickerScore[]>([]);
-  const [teams, setTeams] = useState<Record<string, string>>({});
+  const [teams, setTeams] = useState<Record<string, { name: string, school: string }>>({});
   const [competitions, setCompetitions] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -26,8 +26,11 @@ export default function LiveScoreTicker() {
     
     // We listen to teams and competitions snapshots once or continuously
     const unsubTeams = onSnapshot(collection(db, 'teams'), (snap) => {
-      const mapping: Record<string, string> = {};
-      snap.forEach(doc => mapping[doc.id] = doc.data().name);
+      const mapping: Record<string, { name: string, school: string }> = {};
+      snap.forEach(doc => mapping[doc.id] = { 
+        name: doc.data().name, 
+        school: doc.data().school 
+      });
       setTeams(mapping);
     });
 
@@ -53,13 +56,17 @@ export default function LiveScoreTicker() {
   if (loading || recentScores.length === 0) return null;
 
   // Process data for display
-  const tickerItems = recentScores.map(score => ({
-    ...score,
-    teamName: teams[score.teamId] || 'กำลังโหลดชื่อทีม...',
-    competitionName: competitions[score.competitionId] || 'กำลังโหลดรายการ...',
-    score: score.score,
-    timeUsed: score.details?.timeUsed
-  }));
+  const tickerItems = recentScores.map(score => {
+    const teamData = teams[score.teamId];
+    return {
+      ...score,
+      teamName: teamData?.name || 'กำลังโหลดชื่อทีม...',
+      schoolName: teamData?.school || '',
+      competitionName: competitions[score.competitionId] || 'กำลังโหลดรายการ...',
+      score: score.score,
+      timeUsed: score.details?.timeUsed
+    };
+  });
 
   return (
     <div className="bg-blue-600 overflow-hidden py-3 relative">
@@ -87,7 +94,12 @@ export default function LiveScoreTicker() {
                   {score.competitionName}
                 </span>
               </div>
-              <span className="font-black text-base tracking-tight">{score.teamName}</span>
+              <div className="flex flex-col">
+                <span className="font-black text-base tracking-tight leading-none">{score.teamName}</span>
+                {score.schoolName && (
+                  <span className="text-[10px] font-bold text-blue-200 mt-1 opacity-80">{score.schoolName}</span>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <div className="px-2.5 py-1 bg-yellow-400 text-blue-900 rounded-lg font-black text-sm shadow-sm">
                   {score.score}

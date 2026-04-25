@@ -28,9 +28,8 @@ export default function NotificationSystem() {
 
     const q = query(
       collection(db, 'notifications'),
-      where('targetRole', 'in', ['all', profile.role]),
       orderBy('createdAt', 'desc'),
-      limit(20)
+      limit(50)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -39,10 +38,13 @@ export default function NotificationSystem() {
         ...doc.data()
       })) as Notification[];
 
-      // Filter for specific targetUid if present
-      const filtered = fetchedNotifications.filter(n => !n.targetUid || n.targetUid === profile.uid);
+      // Filter for role and specific targetUid client-side to avoid complex indexes
+      const filtered = fetchedNotifications.filter(n => 
+        (n.targetRole === 'all' || n.targetRole === profile.role) &&
+        (!n.targetUid || n.targetUid === profile.uid)
+      );
       
-      setNotifications(filtered);
+      setNotifications(filtered.slice(0, 20)); // Limit to most recent 20 after filtering
       setUnreadCount(filtered.filter(n => !n.readBy.includes(profile.uid)).length);
     });
 

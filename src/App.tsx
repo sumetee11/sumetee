@@ -1,9 +1,9 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
-import { onAuthStateChanged, User as FirebaseUser, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, collection, query, orderBy, where, getDocs, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, User as FirebaseUser, signOut, signInWithPopup, GoogleAuthProvider, signInAnonymously } from 'firebase/auth';
+import { doc, getDoc, onSnapshot, collection, query, orderBy, where, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { LogIn, LogOut, Trophy, Users, UserPlus, ClipboardCheck, LayoutDashboard, Menu, X, ChevronRight, ShieldCheck, AlertCircle, Bell, Medal, Settings } from 'lucide-react';
+import { LogIn, LogOut, Trophy, Users, UserPlus, ClipboardCheck, LayoutDashboard, Menu, X, ChevronRight, ShieldCheck, AlertCircle, Bell, Medal, Settings, Check, Eye, EyeOff, Timer, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import CompetitionTypeManagement from './components/CompetitionTypeManagement';
@@ -15,6 +15,8 @@ import NotificationSystem from './components/NotificationSystem';
 import Scoring from './components/Scoring';
 import Rankings from './components/Rankings';
 import LiveScoreTicker from './components/LiveScoreTicker';
+import PendingTeams from './components/PendingTeams';
+import Reports from './components/Reports';
 
 // --- Types ---
 export type Level = 'primary' | 'junior_high' | 'senior_high';
@@ -69,6 +71,10 @@ interface ToastContextType {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+interface PopupContextType {
+  showPopup: (title: string, message: string, type: 'success' | 'error' | 'confirm', onConfirm?: () => void) => void;
+}
+
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
@@ -82,6 +88,10 @@ export const AuthContext = createContext<AuthContextType>({
 
 export const ToastContext = createContext<ToastContextType>({
   showToast: () => {},
+});
+
+export const PopupContext = createContext<PopupContextType>({
+  showPopup: () => {},
 });
 
 // --- Components ---
@@ -117,6 +127,82 @@ const ToastContainer: React.FC<{ toasts: ToastMessage[]; removeToast: (id: strin
         ))}
       </AnimatePresence>
     </div>
+  );
+};
+
+const SuccessErrorPopup: React.FC<{ 
+  isOpen: boolean; 
+  title: string; 
+  message: string; 
+  type: 'success' | 'error' | 'confirm'; 
+  onClose: () => void;
+  onConfirm?: () => void;
+}> = ({ isOpen, title, message, type, onClose, onConfirm }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="relative bg-white rounded-[28px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] max-w-[364px] w-full p-7 text-center"
+          >
+            <div className={cn(
+              "w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center shadow-lg",
+              type === 'success' ? "bg-green-100 text-green-600" : 
+              type === 'error' ? "bg-red-100 text-red-600" :
+              "bg-orange-100 text-orange-600"
+            )}>
+              {type === 'success' ? <ShieldCheck className="w-10 h-10" /> : 
+               type === 'error' ? <AlertCircle className="w-10 h-10" /> :
+               <AlertCircle className="w-10 h-10" />}
+            </div>
+            <h3 className="text-2xl font-black text-gray-900 mb-2">{title}</h3>
+            <p className="text-gray-500 mb-8 font-medium">{message}</p>
+            
+            {type === 'confirm' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={onClose}
+                  className="w-full py-4 bg-gray-100 text-gray-600 rounded-2xl font-bold text-lg hover:bg-gray-200 transition-all"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={() => {
+                    if (onConfirm) onConfirm();
+                    onClose();
+                  }}
+                  className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold text-lg hover:bg-red-700 transition-all shadow-lg shadow-red-100"
+                >
+                  ยืนยัน
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={onClose}
+                className={cn(
+                  "w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-lg",
+                  type === 'success' 
+                    ? "bg-green-600 text-white hover:bg-green-700 shadow-green-100" 
+                    : "bg-red-600 text-white hover:bg-red-700 shadow-red-100"
+                )}
+              >
+                เข้าใจแล้ว
+              </button>
+            )}
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 };
 
@@ -200,7 +286,9 @@ const Navbar = () => {
   const navItems = [
     { name: 'แดชบอร์ด', path: '/dashboard', icon: LayoutDashboard, show: !!profile },
     { name: 'บันทึกคะแนน', path: '/scoring', icon: ClipboardCheck, show: !!profile },
+    { name: 'ทีมที่ยังไม่ได้แข่ง', path: '/pending-teams', icon: Timer, show: true },
     { name: 'สรุปผลคะแนน', path: '/rankings', icon: Medal, show: true },
+    { name: 'รายงานสรุป', path: '/reports', icon: FileText, show: !!profile },
     { name: 'จัดการทีม', path: '/teams', icon: Users, show: isAdmin },
     { name: 'จัดการรายการแข่งขัน', path: '/competitions', icon: ClipboardCheck, show: isAdmin },
     { name: 'จัดการกรรมการ', path: '/judges', icon: UserPlus, show: isAdmin },
@@ -335,70 +423,170 @@ const Home = () => {
     };
   }, []);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
-      <div className="text-center mb-16">
-        <motion.h1 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-5xl font-extrabold text-gray-900 mb-6 tracking-tight"
-        >
-          ระบบจัดการการแข่งขันหุ่นยนต์
-        </motion.h1>
-        <motion.p 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="text-xl text-gray-600 max-w-2xl mx-auto"
-        >
-          แพลตฟอร์มสำหรับบันทึกคะแนน จัดการทีม และแสดงผลการแข่งขันแบบเรียลไทม์
-        </motion.p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {types.map((item, idx) => {
-          const firstComp = competitions.find(c => c.levelKey === item.key);
-          const themeColor = firstComp?.theme || 'blue';
-          
-          return (
+    <div className="min-h-screen pb-20">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden bg-white pt-16 pb-24 lg:pt-32 lg:pb-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <motion.div
-              key={item.key}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: idx * 0.1 + 0.2 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 hover:shadow-xl transition-all group"
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
             >
-              <div className={cn(
-                "w-12 h-12 rounded-2xl mb-6 flex items-center justify-center text-white font-bold text-xl shadow-lg",
-                themeColor === 'blue' ? 'bg-blue-500 shadow-blue-100' : 
-                themeColor === 'purple' ? 'bg-purple-500 shadow-purple-100' : 
-                themeColor === 'orange' ? 'bg-orange-500 shadow-orange-100' : 
-                themeColor === 'emerald' ? 'bg-emerald-500 shadow-emerald-100' : 
-                'bg-rose-500 shadow-rose-100'
-              )}>
-                {idx + 1}
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 text-blue-600 text-sm font-bold mb-6">
+                <Trophy className="w-4 h-4" />
+                <span>ยินดีต้อนรับสู่ระบบจัดการการแข่งขัน</span>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">{item.name}</h3>
-              <p className="text-gray-600 mb-8">เข้าถึงระบบบันทึกคะแนนและอันดับของ{item.name}</p>
-              <Link 
-                to={`/rankings?level=${item.key}`}
-                className={cn(
-                  "flex items-center gap-2 font-semibold group-hover:gap-4 transition-all",
-                  themeColor === 'blue' ? 'text-blue-600' : 
-                  themeColor === 'purple' ? 'text-purple-600' : 
-                  themeColor === 'orange' ? 'text-orange-600' : 
-                  themeColor === 'emerald' ? 'text-emerald-600' : 
-                  'text-rose-600'
-                )}
-              >
-                ดูอันดับคะแนน <ChevronRight className="w-5 h-5" />
-              </Link>
+              <h1 className="text-5xl lg:text-7xl font-black text-gray-900 leading-[1.1] mb-6 tracking-tight">
+                Robotic <span className="text-blue-600">Arena</span> Challenge
+              </h1>
+              <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-xl">
+                แพลตฟอร์มบันทึกคะแนน จัดการทีม และรายงานผลการแข่งขันหุ่นยนต์แบบเรียลไทม์ 
+                ที่ช่วยให้การบริหารจัดการการแข่งขันเป็นเรื่องง่ายและแม่นยำ
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <Link 
+                  to="/rankings"
+                  className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 flex items-center gap-2"
+                >
+                  <Medal className="w-5 h-5" />
+                  ดูอันดับล่าสุด
+                </Link>
+                <Link 
+                  to="/login"
+                  className="bg-white text-gray-900 border-2 border-gray-100 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-gray-50 transition-all flex items-center gap-2"
+                >
+                  <LogIn className="w-5 h-5" />
+                  ลงชื่อเข้าใช้งาน
+                </Link>
+              </div>
             </motion.div>
-          );
-        })}
-      </div>
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, rotate: 5 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              className="relative"
+            >
+              <div className="absolute inset-0 bg-blue-600/5 blur-[100px] rounded-full" />
+              <div className="relative bg-white p-4 rounded-[40px] shadow-2xl border border-gray-50 overflow-hidden">
+                <img 
+                  src="https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&q=80&w=1200&h=800"
+                  alt="Robot Arena Hero"
+                  className="w-full h-auto rounded-[32px] object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              
+              {/* Floating Element 1 */}
+              <motion.div
+                animate={{ y: [0, -20, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute -top-10 -right-10 bg-white p-6 rounded-3xl shadow-xl border border-gray-50 hidden md:block"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center">
+                    <Check className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 font-bold uppercase tracking-wider">Status</div>
+                    <div className="text-lg font-black text-gray-900">Live Scoring</div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Floating Element 2 */}
+              <motion.div
+                animate={{ y: [0, 20, 0] }}
+                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                className="absolute -bottom-10 -left-10 bg-white p-6 rounded-3xl shadow-xl border border-gray-50 hidden md:block"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center">
+                    <Users className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400 font-bold uppercase tracking-wider">Teams</div>
+                    <div className="text-lg font-black text-gray-900">Ready to Compete</div>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          </div>
+        </div>
+        
+        {/* Background Decorative Elements */}
+        <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-[600px] h-[600px] bg-blue-50/50 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-blue-50/50 rounded-full blur-[120px] pointer-events-none" />
+      </section>
+
+      {/* Competition Categories */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+          <div>
+            <h2 className="text-3xl font-black text-gray-900 mb-2">ระดับการแข่งขัน</h2>
+            <p className="text-gray-500">เลือกดูผลการแข่งขันตามระดับชั้นการศึกษา</p>
+          </div>
+          <Link to="/rankings" className="text-blue-600 font-bold flex items-center gap-2 hover:gap-3 transition-all">
+            ดูตารางสรุปคะแนนทั้งหมด <ChevronRight className="w-5 h-5" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {types.map((item, idx) => {
+            const firstComp = competitions.find(c => c.levelKey === item.key);
+            const themeColor = firstComp?.theme || 'blue';
+            
+            return (
+              <motion.div
+                key={item.key}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.1 }}
+                className="bg-white rounded-[32px] p-8 shadow-sm border border-gray-100 hover:shadow-2xl hover:-translate-y-2 transition-all group"
+              >
+                <div className={cn(
+                  "w-14 h-14 rounded-2xl mb-8 flex items-center justify-center text-white font-bold text-2xl shadow-lg",
+                  themeColor === 'blue' ? 'bg-blue-500 shadow-blue-100' : 
+                  themeColor === 'purple' ? 'bg-purple-500 shadow-purple-100' : 
+                  themeColor === 'orange' ? 'bg-orange-500 shadow-orange-100' : 
+                  themeColor === 'emerald' ? 'bg-emerald-500 shadow-emerald-100' : 
+                  'bg-rose-500 shadow-rose-100'
+                )}>
+                  {idx + 1}
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 mb-4">{item.name}</h3>
+                <p className="text-gray-500 mb-10 leading-relaxed font-medium">
+                  ร่วมติดตามและให้กำลังใจทีมผู้เข้าแข่งขันในระดับ {item.name} บันทึกคะแนนและรายงานผลสด
+                </p>
+                <Link 
+                  to={`/rankings?level=${item.key}`}
+                  className={cn(
+                    "inline-flex items-center gap-2 font-bold group-hover:gap-4 transition-all px-6 py-3 rounded-xl",
+                    themeColor === 'blue' ? 'bg-blue-50 text-blue-600' : 
+                    themeColor === 'purple' ? 'bg-purple-50 text-purple-600' : 
+                    themeColor === 'orange' ? 'bg-orange-50 text-orange-600' : 
+                    themeColor === 'emerald' ? 'bg-emerald-50 text-emerald-600' : 
+                    'bg-rose-50 text-rose-600'
+                  )}
+                >
+                  เปิดหน้ารายงานผล <ChevronRight className="w-5 h-5" />
+                </Link>
+              </motion.div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 };
@@ -413,6 +601,7 @@ const Login = () => {
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginType, setLoginType] = useState<'judge' | 'admin'>('judge');
+  const [showPassword, setShowPassword] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryId, setRecoveryId] = useState('');
   const [recoveryMessage, setRecoveryMessage] = useState('');
@@ -514,13 +703,22 @@ const Login = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">รหัสผ่าน</label>
-                <input
-                  type="password"
-                  value={judgePassword}
-                  onChange={(e) => setJudgePassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-purple-500 rounded-2xl outline-none transition-all"
-                  placeholder="ระบุรหัสผ่าน"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={judgePassword}
+                    onChange={(e) => setJudgePassword(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-purple-500 rounded-2xl outline-none transition-all pr-12"
+                    placeholder="ระบุรหัสผ่าน"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-purple-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
               </div>
               <button
                 type="submit"
@@ -544,13 +742,22 @@ const Login = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">รหัสผ่าน</label>
-                <input
-                  type="password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none transition-all"
-                  placeholder="ระบุรหัสผ่าน"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none transition-all pr-12"
+                    placeholder="ระบุรหัสผ่าน"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
               </div>
               <div className="flex justify-end">
                 <button 
@@ -660,6 +867,18 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [popup, setPopup] = useState<{ 
+    isOpen: boolean; 
+    title: string; 
+    message: string; 
+    type: 'success' | 'error' | 'confirm';
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'success'
+  });
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -673,17 +892,50 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const showPopup = (title: string, message: string, type: 'success' | 'error' | 'confirm', onConfirm?: () => void) => {
+    setPopup({ isOpen: true, title, message, type, onConfirm });
+  };
+
   // Check for existing session on mount
   useEffect(() => {
-    const savedProfile = localStorage.getItem('user_profile');
-    if (savedProfile) {
-      const p = JSON.parse(savedProfile);
-      setUser({ uid: p.uid, isCustom: true });
-      setProfile(p);
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      const savedProfile = localStorage.getItem('user_profile');
+      
+      if (savedProfile) {
+        const p = JSON.parse(savedProfile);
+        
+        if (firebaseUser) {
+          // Verify if mapping exists
+          const mappingDoc = await getDoc(doc(db, 'users_auth', firebaseUser.uid));
+          if (mappingDoc.exists()) {
+            setUser({ uid: p.uid, authUid: firebaseUser.uid, isCustom: true });
+            setProfile(p);
+          } else {
+            // Mapping lost, need re-auth
+            localStorage.removeItem('user_profile');
+            setUser(null);
+            setProfile(null);
+          }
+        } else {
+          // Profile exists but not signed in to Firebase Auth
+          try {
+            const result = await signInAnonymously(auth);
+            // Re-bind mapping if needed (complex, better to re-log if anonymous session lost)
+            // For now, if no firebaseUser, we clear session to be safe
+            localStorage.removeItem('user_profile');
+            setUser(null);
+            setProfile(null);
+          } catch (e: any) {
+            if (e.code === 'auth/configuration-not-found') {
+              console.error("Firebase Authentication Error: Anonymous Auth is not enabled in Firebase Console. Please enable it in Build > Authentication > Sign-in method.");
+            } else {
+              console.error("Auto sign-in failed", e);
+            }
+          }
+        }
+      }
       setLoading(false);
-    } else {
-      setLoading(false);
-    }
+    });
 
     // Bootstrap default admin
     const bootstrapAdmin = async () => {
@@ -711,21 +963,41 @@ export default function App() {
   const loginJudge = async (idRef: string, password: string) => {
     setLoading(true);
     try {
-      const q = query(
-        collection(db, 'users'), 
-        where('judgeId', '==', idRef), 
-        where('password', '==', password),
-        where('role', '==', 'judge')
-      );
-      const querySnapshot = await getDocs(q);
+      const userDocId = `judge_${idRef.trim()}`;
+      const userDoc = await getDoc(doc(db, 'users', userDocId));
       
-      if (!querySnapshot.empty) {
-        const p = { uid: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as UserProfile;
-        setUser({ uid: p.uid, isCustom: true });
-        setProfile(p);
-        localStorage.setItem('user_profile', JSON.stringify(p));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        if (data.password === password && data.role === 'judge') {
+          const p = { uid: userDoc.id, ...data } as UserProfile;
+          
+          // 1. Sign in to Firebase Auth anonymously to get a token for Rules
+          let authResult;
+          try {
+            authResult = await signInAnonymously(auth);
+          } catch (e: any) {
+            if (e.code === 'auth/configuration-not-found') {
+              throw new Error('ระบบความปลอดภัยขัดข้อง: กรุณาเปิดใช้งาน Anonymous Auth ใน Firebase Console (Authentication > Sign-in method)');
+            }
+            throw e;
+          }
+          
+          // 2. Map this session in Rules-accessible collection
+          await setDoc(doc(db, 'users_auth', authResult.user.uid), {
+            role: 'judge',
+            profileUid: p.uid,
+            password: password, // Required by rules to verify binding
+            createdAt: new Date().toISOString()
+          });
+
+          setUser({ uid: p.uid, authUid: authResult.user.uid, isCustom: true });
+          setProfile(p);
+          localStorage.setItem('user_profile', JSON.stringify(p));
+        } else {
+          throw new Error('รหัสผ่านไม่ถูกต้อง');
+        }
       } else {
-        throw new Error('รหัสกรรมการหรือรหัสผ่านไม่ถูกต้อง');
+        throw new Error('ไม่พบข้อมูลกรรมการ');
       }
     } catch (error) {
       throw error;
@@ -737,21 +1009,41 @@ export default function App() {
   const loginAdmin = async (adminId: string, password: string) => {
     setLoading(true);
     try {
-      const q = query(
-        collection(db, 'users'), 
-        where('adminId', '==', adminId), 
-        where('password', '==', password),
-        where('role', '==', 'admin')
-      );
-      const querySnapshot = await getDocs(q);
+      const userDocId = `admin_${adminId.trim()}`;
+      const userDoc = await getDoc(doc(db, 'users', userDocId));
       
-      if (!querySnapshot.empty) {
-        const p = { uid: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as UserProfile;
-        setUser({ uid: p.uid, isCustom: true });
-        setProfile(p);
-        localStorage.setItem('user_profile', JSON.stringify(p));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        if (data.password === password && data.role === 'admin') {
+          const p = { uid: userDoc.id, ...data } as UserProfile;
+          
+          // 1. Sign in to Firebase Auth anonymously to get a token for Rules
+          let authResult;
+          try {
+            authResult = await signInAnonymously(auth);
+          } catch (e: any) {
+            if (e.code === 'auth/configuration-not-found') {
+              throw new Error('ระบบความปลอดภัยขัดข้อง: กรุณาเปิดใช้งาน Anonymous Auth ใน Firebase Console (Authentication > Sign-in method)');
+            }
+            throw e;
+          }
+          
+          // 2. Map this session in Rules-accessible collection
+          await setDoc(doc(db, 'users_auth', authResult.user.uid), {
+            role: 'admin',
+            profileUid: p.uid,
+            password: password, // Required by rules to verify binding
+            createdAt: new Date().toISOString()
+          });
+
+          setUser({ uid: p.uid, authUid: authResult.user.uid, isCustom: true });
+          setProfile(p);
+          localStorage.setItem('user_profile', JSON.stringify(p));
+        } else {
+          throw new Error('รหัสผ่านไม่ถูกต้อง');
+        }
       } else {
-        throw new Error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+        throw new Error('ไม่พบข้อมูลผู้ดูแลระบบ');
       }
     } catch (error) {
       throw error;
@@ -761,9 +1053,17 @@ export default function App() {
   };
 
   const logout = async () => {
+    try {
+      if (auth.currentUser) {
+        await deleteDoc(doc(db, 'users_auth', auth.currentUser.uid));
+      }
+    } catch (e) {
+      console.error("Logout cleanup failed", e);
+    }
     localStorage.removeItem('user_profile');
     setUser(null);
     setProfile(null);
+    await signOut(auth);
   };
 
   const isAdmin = profile?.role === 'admin';
@@ -772,30 +1072,42 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ user, profile, loading, isAdmin, isJudge, loginJudge, loginAdmin, logout }}>
       <ToastContext.Provider value={{ showToast }}>
-        <ErrorBoundary>
-          <Router>
-            <div className="min-h-screen bg-white font-sans text-gray-900">
-              <Navbar />
-              <LiveScoreTicker />
-              <main>
-                <Routes>
-                  <Route path="/" element={<Home />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/dashboard" element={profile ? <Dashboard /> : <Navigate to="/login" />} />
-                  <Route path="/competition-types" element={isAdmin ? <CompetitionTypeManagement /> : <Navigate to="/login" />} />
-                  <Route path="/competitions" element={isAdmin ? <CompetitionManagement /> : <Navigate to="/login" />} />
-                  <Route path="/teams" element={isAdmin ? <TeamManagement /> : <Navigate to="/login" />} />
-                  <Route path="/scoring" element={profile ? <Scoring /> : <Navigate to="/login" />} />
-                  <Route path="/rankings" element={<Rankings />} />
-                  <Route path="/judges" element={isAdmin ? <JudgeManagement /> : <Navigate to="/login" />} />
-                  
-                  <Route path="*" element={<Navigate to="/" />} />
-                </Routes>
-              </main>
-              <ToastContainer toasts={toasts} removeToast={removeToast} />
-            </div>
-          </Router>
-        </ErrorBoundary>
+        <PopupContext.Provider value={{ showPopup }}>
+          <ErrorBoundary>
+            <Router>
+              <div className="min-h-screen bg-white font-sans text-gray-900">
+                <Navbar />
+                <LiveScoreTicker />
+                <main>
+                  <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/dashboard" element={profile ? <Dashboard /> : <Navigate to="/login" />} />
+                    <Route path="/competition-types" element={isAdmin ? <CompetitionTypeManagement /> : <Navigate to="/login" />} />
+                    <Route path="/competitions" element={isAdmin ? <CompetitionManagement /> : <Navigate to="/login" />} />
+                    <Route path="/teams" element={isAdmin ? <TeamManagement /> : <Navigate to="/login" />} />
+                    <Route path="/scoring" element={profile ? <Scoring /> : <Navigate to="/login" />} />
+                    <Route path="/rankings" element={<Rankings />} />
+                    <Route path="/pending-teams" element={<PendingTeams />} />
+                    <Route path="/reports" element={profile ? <Reports /> : <Navigate to="/login" />} />
+                    <Route path="/judges" element={isAdmin ? <JudgeManagement /> : <Navigate to="/login" />} />
+                    
+                    <Route path="*" element={<Navigate to="/" />} />
+                  </Routes>
+                </main>
+                <ToastContainer toasts={toasts} removeToast={removeToast} />
+                <SuccessErrorPopup 
+                  isOpen={popup.isOpen}
+                  title={popup.title}
+                  message={popup.message}
+                  type={popup.type}
+                  onConfirm={popup.onConfirm}
+                  onClose={() => setPopup(prev => ({ ...prev, isOpen: false }))}
+                />
+              </div>
+            </Router>
+          </ErrorBoundary>
+        </PopupContext.Provider>
       </ToastContext.Provider>
     </AuthContext.Provider>
   );

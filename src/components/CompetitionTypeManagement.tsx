@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext } from '../App';
+import { AuthContext, ToastContext, PopupContext } from '../App';
 import { Trophy, Plus, Trash2, Edit3, X, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, handleFirestoreError, OperationType } from '../lib/utils';
@@ -10,15 +10,19 @@ interface CompetitionType {
   id: string;
   key: string;
   name: string;
+  minStudents?: number;
+  maxStudents?: number;
 }
 
 export default function CompetitionTypeManagement() {
   const { isAdmin } = useContext(AuthContext);
+  const { showPopup } = useContext(PopupContext);
+  const { showToast } = useContext(ToastContext);
   const [types, setTypes] = useState<CompetitionType[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingType, setEditingType] = useState<CompetitionType | null>(null);
-  const [formData, setFormData] = useState({ key: '', name: '' });
+  const [formData, setFormData] = useState({ key: '', name: '', minStudents: 2, maxStudents: 3 });
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -33,10 +37,15 @@ export default function CompetitionTypeManagement() {
   const handleOpenModal = (type?: CompetitionType) => {
     if (type) {
       setEditingType(type);
-      setFormData({ key: type.key, name: type.name });
+      setFormData({ 
+        key: type.key, 
+        name: type.name, 
+        minStudents: type.minStudents ?? 2, 
+        maxStudents: type.maxStudents ?? 3 
+      });
     } else {
       setEditingType(null);
-      setFormData({ key: '', name: '' });
+      setFormData({ key: '', name: '', minStudents: 2, maxStudents: 3 });
     }
     setError('');
     setIsModalOpen(true);
@@ -53,21 +62,33 @@ export default function CompetitionTypeManagement() {
       const typeRef = doc(db, 'competition_types', formData.key.trim());
       await setDoc(typeRef, {
         key: formData.key.trim(),
-        name: formData.name.trim()
+        name: formData.name.trim(),
+        minStudents: Number(formData.minStudents),
+        maxStudents: Number(formData.maxStudents)
       });
+      showPopup('บันทึกสำเร็จ!', `ประเภทการแข่งขัน "${formData.name}" เรียบร้อยแล้ว`, 'success');
       setIsModalOpen(false);
     } catch (err) {
+      showPopup('บันทึกไม่สำเร็จ', 'เกิดข้อผิดพลาดในการบันทึกประเภทการแข่งขัน', 'error');
       setError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('คุณต้องการลบประเภทการแข่งขันนี้ใช่หรือไม่?')) return;
-    try {
-      await deleteDoc(doc(db, 'competition_types', id));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `competition_types/${id}`);
-    }
+  const handleDelete = (id: string) => {
+    showPopup(
+      'ยืนยันการลบประเภทการแข่งขัน',
+      'คุณต้องการลบประเภทการแข่งขันนี้ใช่หรือไม่? ข้อมูลการแข่งขันและทีมที่อยู่ในระดับนี้ทั้งหมดอาจได้รับผลกระทบ',
+      'confirm',
+      async () => {
+        try {
+          await deleteDoc(doc(db, 'competition_types', id));
+          showToast('ลบประเภทการแข่งขันสำเร็จ', 'success');
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `competition_types/${id}`);
+          showToast('ไม่สามารถลบประเภทการแข่งขันได้', 'error');
+        }
+      }
+    );
   };
 
   if (loading) {
@@ -126,7 +147,12 @@ export default function CompetitionTypeManagement() {
               </div>
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-1">{type.name}</h3>
-            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest">{type.key}</p>
+            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mb-3">{type.key}</p>
+            <div className="flex gap-2 text-xs font-bold">
+              <div className="px-2 py-1 bg-green-50 text-green-600 rounded-lg">
+                นักเรียน: {type.minStudents || 2}-{type.maxStudents || 3} คน
+              </div>
+            </div>
           </motion.div>
         ))}
       </div>
@@ -178,6 +204,31 @@ export default function CompetitionTypeManagement() {
                     className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="เช่น ระดับประถมศึกษา"
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">นร. ขั้นต่ำ</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={formData.minStudents}
+                      onChange={(e) => setFormData({ ...formData, minStudents: parseInt(e.target.value) || 1 })}
+                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">นร. สูงสุด</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={formData.maxStudents}
+                      onChange={(e) => setFormData({ ...formData, maxStudents: parseInt(e.target.value) || 1 })}
+                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
                 </div>
 
                 {error && (

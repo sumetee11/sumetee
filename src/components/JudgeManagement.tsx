@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { AuthContext, UserProfile, Level, ToastContext } from '../App';
+import { AuthContext, UserProfile, Level, ToastContext, PopupContext } from '../App';
 import { sendNotification } from '../services/notificationService';
-import { UserPlus, Trash2, Edit3, X, Check, AlertCircle, Shield, Trophy, Search, Plus } from 'lucide-react';
+import { UserPlus, Trash2, Edit3, X, Check, AlertCircle, Shield, Trophy, Search, Plus, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, handleFirestoreError, OperationType } from '../lib/utils';
 
@@ -21,6 +21,7 @@ interface Competition {
 export default function JudgeManagement() {
   const { isAdmin } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
+  const { showPopup } = useContext(PopupContext);
   const [judges, setJudges] = useState<UserProfile[]>([]);
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>([]);
   const [competitions, setCompetitions] = useState<Competition[]>([]);
@@ -28,6 +29,7 @@ export default function JudgeManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingJudge, setEditingJudge] = useState<UserProfile | null>(null);
   const [search, setSearch] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const [formData, setFormData] = useState({
     judgeId: '',
@@ -146,6 +148,7 @@ export default function JudgeManagement() {
         assignedCompetitions: formData.assignedCompetitions
       }, { merge: true });
 
+      showPopup('บันทึกสำเร็จ!', `ข้อมูลกรรมการ "${formData.displayName}" เรียบร้อยแล้ว`, 'success');
       showToast(editingJudge ? 'อัปเดตข้อมูลกรรมการสำเร็จ' : 'เพิ่มกรรมการใหม่สำเร็จ', 'success');
 
       if (!editingJudge) {
@@ -168,19 +171,26 @@ export default function JudgeManagement() {
       setIsModalOpen(false);
     } catch (err) {
       console.error(err);
+      showPopup('บันทึกไม่สำเร็จ', 'เกิดข้อผิดพลาดในการบันทึกข้อมูลกรรมการ', 'error');
       setError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
     }
   };
 
-  const handleDelete = async (uid: string) => {
-    if (!window.confirm('คุณต้องการลบกรรมการท่านนี้ใช่หรือไม่?')) return;
-    try {
-      await deleteDoc(doc(db, 'users', uid));
-      showToast('ลบข้อมูลกรรมการสำเร็จ', 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${uid}`);
-      showToast('ไม่สามารถลบข้อมูลกรรมการได้', 'error');
-    }
+  const handleDelete = (uid: string) => {
+    showPopup(
+      'ยืนยันการลบลบกรรมการ',
+      'คุณต้องการลบกรรมการท่านนี้ใช่หรือไม่? บัญชีผู้ใช้จะไม่สามารถเข้าสู่ระบบได้อีกต่อไป',
+      'confirm',
+      async () => {
+        try {
+          await deleteDoc(doc(db, 'users', uid));
+          showToast('ลบข้อมูลกรรมการสำเร็จ', 'success');
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `users/${uid}`);
+          showToast('ไม่สามารถลบข้อมูลกรรมการได้', 'error');
+        }
+      }
+    );
   };
 
   const filteredJudges = judges.filter(j => 
@@ -347,13 +357,22 @@ export default function JudgeManagement() {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">รหัสผ่าน (Password)</label>
-                    <input
-                      type="text"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="กำหนดรหัสผ่าน"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none pr-12"
+                        placeholder="กำหนดรหัสผ่าน"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
