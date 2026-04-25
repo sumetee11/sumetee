@@ -26,10 +26,7 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isSignedIn() && (
-        (getUserDoc(request.auth.uid).data.role == 'admin') ||
-        (request.auth.token.email == "k.sumetee@gmail.com" && request.auth.token.email_verified == true)
-      );
+      return isSignedIn() && getUserDoc(request.auth.uid).data.role == 'admin';
     }
     
     function isJudge() {

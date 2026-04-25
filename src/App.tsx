@@ -644,11 +644,13 @@ const Login = () => {
     e.preventDefault();
     if (!recoveryId.trim()) return;
     
+    const recoveryAdminId = import.meta.env.VITE_RECOVERY_ADMIN_ID || import.meta.env.VITE_ADMIN_ID || 'admin';
+    
     // In a real app, this would send an email or log a request
-    if (recoveryId === 'sumetee1122') {
-      setRecoveryMessage('เนื่องจากท่านเป็น Super Admin กรุณาตรวจสอบรหัสผ่านในระบบฐานข้อมูลโดยตรง หรือติดต่อผู้พัฒนาระบบ');
+    if (recoveryId === recoveryAdminId) {
+      setRecoveryMessage('เนื่องจากท่านเป็น Super Admin กรุณาจดจำรหัสผ่านที่ตั้งไว้ หรือติดต่อผู้พัฒนาระบบหากลืมรหัสผ่านหลัก');
     } else {
-      setRecoveryMessage('ระบบได้รับคำขอของท่านแล้ว กรุณาติดต่อ Super Admin (sumetee1122) เพื่อขอรีเซ็ตรหัสผ่านของท่าน');
+      setRecoveryMessage(`ระบบได้รับคำขอของท่านแล้ว กรุณาติดต่อ Super Admin (${recoveryAdminId}) เพื่อขอรีเซ็ตรหัสผ่านของท่าน`);
     }
   };
 
@@ -939,15 +941,22 @@ export default function App() {
 
     // Bootstrap default admin
     const bootstrapAdmin = async () => {
+      const adminId = import.meta.env.VITE_ADMIN_ID;
+      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+
+      if (!adminId || !adminPassword) {
+        console.warn('Admin credentials not set in environment variables. Bootstrapping skipped.');
+        return;
+      }
+
       try {
-        const adminId = 'sumetee1122';
         const q = query(collection(db, 'users'), where('adminId', '==', adminId), where('role', '==', 'admin'));
         const snap = await getDocs(q);
         if (snap.empty) {
           await setDoc(doc(db, 'users', 'admin_' + adminId), {
             uid: 'admin_' + adminId,
             adminId: adminId,
-            password: '123456789sk',
+            password: adminPassword,
             role: 'admin',
             levels: ['primary', 'junior_high', 'senior_high'],
             displayName: 'Super Admin'
